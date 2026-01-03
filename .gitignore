@@ -17,6 +17,7 @@ docs/
 .env.development
 .env.backup
 .env.old
+.env.example
 
 # Node modules
 node_modules/
@@ -51,3 +52,12 @@ Thumbs.db
 # Foundry
 forge-cache/
 .solhint.json
+
+# Documentation (generated)
+FINAL_SUMMARY.md
+IMPLEMENTATION_SUMMARY.md
+QUICKSTART.md
+SecurityEdgeCases.md
+build.md
+Vulnerability_Response.md
+# IMPROVEMENTS.md is tracked - keep this file in git
