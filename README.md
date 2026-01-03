@@ -42,7 +42,7 @@ DonateOnChain is a full-stack Web3 application that enables:
 DonateOnChain/
 ├── src/                          # Smart contracts (Solidity)
 │   ├── DonateOnChain.sol        # Main UUPS upgradeable contract
-│   ├── AMLCompliance.sol        # KYC/AML module
+│   ├── Errors.sol               # Custom error definitions
 │   └── interfaces/              # Contract interfaces
 ├── frontend/                     # Web application (React + TypeScript)
 │   ├── src/
@@ -52,8 +52,7 @@ DonateOnChain/
 │   │   └── lib/                 # HashPack integration
 │   └── server/                  # Backend relayer service
 ├── script/                       # Deployment scripts
-├── test/                         # Smart contract tests
-└── setup/                        # Setup utilities
+└── test/                         # Smart contract tests
 ```
 
 ## Quick Start
@@ -117,18 +116,17 @@ forge coverage
 ### Core Contracts
 
 #### DonateOnChain.sol
-Main upgradeable contract implementing:
+Main UUPS upgradeable contract implementing:
 - Campaign creation and management
-- Donation processing
-- Fund distribution (pull-over-push)
-- NFT minting integration
+- Donation processing with pull-over-push pattern
+- Fund distribution and refunds
+- NFT minting integration (HTS)
 - Role-based access control
+- Built-in KYC/AML compliance (verification, blacklisting)
+- Multisig treasury protection
 
-#### AMLCompliance.sol
-Compliance module providing:
-- KYC verification
-- Account blacklisting
-- Compliance officer management
+#### Errors.sol
+Centralized custom error definitions library for gas-efficient error handling.
 
 ### Contract Roles
 
