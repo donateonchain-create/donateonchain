@@ -82,11 +82,12 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_InitializeTwice() public {
+    function test_RevertWhen_InitializeTwice() public {
         address[] memory signers = new address[](2);
         signers[0] = signer1;
         signers[1] = signer2;
 
+        vm.expectRevert();
         donateOnChain.initialize(admin, signers, 2, platformWallet);
     }
 
@@ -115,8 +116,9 @@ contract DonateOnChainTest is Test {
         assertTrue(donateOnChain.isBlacklisted(ngo));
     }
 
-    function testFail_UnauthorizedKYCVerification() public {
+    function test_RevertWhen_UnauthorizedKYCVerification() public {
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.verifyAccount(ngo);
     }
 
@@ -154,8 +156,9 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_CreateCampaignWithoutKYC() public {
+    function test_RevertWhen_CreateCampaignWithoutKYC() public {
         vm.prank(ngo);
+        vm.expectRevert();
         donateOnChain.createCampaign(
             designer,
             "Test",
@@ -170,11 +173,12 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_CreateCampaignInvalidBPS() public {
+    function test_RevertWhen_CreateCampaignInvalidBPS() public {
         vm.prank(complianceOfficer);
         donateOnChain.verifyAccount(ngo);
 
         vm.prank(ngo);
+        vm.expectRevert();
         donateOnChain.createCampaign(
             designer,
             "Test",
@@ -217,10 +221,11 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_VetCampaignUnauthorized() public {
+    function test_RevertWhen_VetCampaignUnauthorized() public {
         _createVerifiedCampaign();
 
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.vetCampaign(0, true);
     }
 
@@ -268,17 +273,18 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_ContributeWithoutKYC() public {
+    function test_RevertWhen_ContributeWithoutKYC() public {
         uint256 campaignId = _createActiveCampaign();
 
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.contribute{value: 5 ether}(
             campaignId,
             "QmDonationMetadata"
         );
     }
 
-    function testFail_ContributeToInactiveCampaign() public {
+    function test_RevertWhen_ContributeToInactiveCampaign() public {
         uint256 campaignId = _createVerifiedCampaign();
 
         vm.prank(complianceOfficer);
@@ -286,6 +292,7 @@ contract DonateOnChainTest is Test {
 
         // Campaign is still in Pending_Vetting state
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.contribute{value: 5 ether}(
             campaignId,
             "QmDonationMetadata"
@@ -331,7 +338,7 @@ contract DonateOnChainTest is Test {
         );
     }
 
-    function testFail_ClaimFundsBeforeGoalReached() public {
+    function test_RevertWhen_ClaimFundsBeforeGoalReached() public {
         uint256 campaignId = _createActiveCampaign();
 
         vm.prank(complianceOfficer);
@@ -345,10 +352,11 @@ contract DonateOnChainTest is Test {
 
         // Try to claim with only 50% of goal
         vm.prank(ngo);
+        vm.expectRevert();
         donateOnChain.claimFunds(campaignId);
     }
 
-    function testFail_ClaimFundsTwice() public {
+    function test_RevertWhen_ClaimFundsTwice() public {
         uint256 campaignId = _createActiveCampaign();
 
         vm.prank(complianceOfficer);
@@ -362,6 +370,7 @@ contract DonateOnChainTest is Test {
 
         vm.startPrank(ngo);
         donateOnChain.claimFunds(campaignId);
+        vm.expectRevert();
         donateOnChain.claimFunds(campaignId); // Should fail
         vm.stopPrank();
     }
@@ -474,7 +483,7 @@ contract DonateOnChainTest is Test {
         assertFalse(donateOnChain.paused());
     }
 
-    function testFail_ContributeWhenPaused() public {
+    function test_RevertWhen_ContributeWhenPaused() public {
         uint256 campaignId = _createActiveCampaign();
 
         vm.prank(complianceOfficer);
@@ -484,6 +493,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.pause();
 
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.contribute{value: 5 ether}(
             campaignId,
             "QmDonationMetadata"
@@ -522,10 +532,11 @@ contract DonateOnChainTest is Test {
         assertEq(donateOnChain.treasuryThreshold(), 2);
     }
 
-    function testFail_UnauthorizedUpgrade() public {
+    function test_RevertWhen_UnauthorizedUpgrade() public {
         DonateOnChain newImplementation = new DonateOnChain();
 
         vm.prank(donor);
+        vm.expectRevert();
         donateOnChain.upgradeToAndCall(address(newImplementation), "");
     }
 
