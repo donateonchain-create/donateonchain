@@ -10,7 +10,11 @@
     "verify-nft": "node setup/verify-donation-nft.js"
   },
   "devDependencies": {
-    "@hashgraph/sdk": "^2.39.0",
+    "@hashgraph/sdk": "^2.76.0",
     "dotenv": "^17.2.3"
+  },
+  "dependencies": {
+    "@hashgraph/hedera-wallet-connect": "^2.0.3",
+    "@walletconnect/modal": "^2.7.0"
   }
 }
