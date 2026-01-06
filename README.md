@@ -175,7 +175,7 @@ TREASURY_SIGNER_3=0x...
 TREASURY_THRESHOLD=2
 
 # Network
-HEDERA_TESTNET_RPC_URL=https://testnet.hashio.io/api
+RPC_URL=https://testnet.hashio.io/api
 PRIVATE_KEY=your_private_key
 ```
 

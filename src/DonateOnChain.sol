@@ -1,21 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {
-    Initializable
-} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {
-    UUPSUpgradeable
-} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {
-    AccessControlUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {
-    ReentrancyGuardUpgradeable
-} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {
-    PausableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /**
  * @title DonateOnChain
@@ -42,12 +32,9 @@ contract DonateOnChain is
 
     // ============ Roles ============
 
-    bytes32 public constant COMPLIANCE_OFFICER_ROLE =
-        keccak256("COMPLIANCE_OFFICER_ROLE");
-    bytes32 public constant CAMPAIGN_MANAGER_ROLE =
-        keccak256("CAMPAIGN_MANAGER_ROLE");
-    bytes32 public constant TREASURY_ADMIN_ROLE =
-        keccak256("TREASURY_ADMIN_ROLE");
+    bytes32 public constant COMPLIANCE_OFFICER_ROLE = keccak256("COMPLIANCE_OFFICER_ROLE");
+    bytes32 public constant CAMPAIGN_MANAGER_ROLE = keccak256("CAMPAIGN_MANAGER_ROLE");
+    bytes32 public constant TREASURY_ADMIN_ROLE = keccak256("TREASURY_ADMIN_ROLE");
 
     // ============ Enums ============
 
@@ -57,6 +44,7 @@ contract DonateOnChain is
         Goal_Reached, // Target met, NGO can claim
         Failed_Refundable, // Deadline passed, donors can refund
         Closed // Funds claimed or refund period ended
+
     }
 
     // ============ Structs ============
@@ -147,18 +135,9 @@ contract DonateOnChain is
 
     // KYC/AML Events
     event AccountVerified(address indexed account, address indexed verifiedBy);
-    event VerificationRevoked(
-        address indexed account,
-        address indexed revokedBy
-    );
-    event AccountBlacklisted(
-        address indexed account,
-        address indexed blacklistedBy
-    );
-    event AccountUnblacklisted(
-        address indexed account,
-        address indexed unblacklistedBy
-    );
+    event VerificationRevoked(address indexed account, address indexed revokedBy);
+    event AccountBlacklisted(address indexed account, address indexed blacklistedBy);
+    event AccountUnblacklisted(address indexed account, address indexed unblacklistedBy);
 
     // Campaign Events
     event CampaignCreated(
@@ -168,72 +147,27 @@ contract DonateOnChain is
         uint256 targetAmount,
         uint256 deadline
     );
-    event CampaignVetted(
-        uint256 indexed campaignId,
-        bool approved,
-        address indexed vettedBy
-    );
-    event CampaignStateChanged(
-        uint256 indexed campaignId,
-        CampaignState oldState,
-        CampaignState newState
-    );
-    event FundsClaimed(
-        uint256 indexed campaignId,
-        address indexed ngo,
-        uint256 amount
-    );
-    event ImpactReportUpdated(
-        uint256 indexed nftId,
-        string ipfsCID,
-        address indexed updatedBy
-    );
+    event CampaignVetted(uint256 indexed campaignId, bool approved, address indexed vettedBy);
+    event CampaignStateChanged(uint256 indexed campaignId, CampaignState oldState, CampaignState newState);
+    event FundsClaimed(uint256 indexed campaignId, address indexed ngo, uint256 amount);
+    event ImpactReportUpdated(uint256 indexed nftId, string ipfsCID, address indexed updatedBy);
 
     // Donation Events
-    event DonationMade(
-        address indexed donor,
-        uint256 indexed campaignId,
-        uint256 amount,
-        uint256 nftSerialNumber
-    );
-    event RefundClaimed(
-        address indexed donor,
-        uint256 indexed campaignId,
-        uint256 amount
-    );
+    event DonationMade(address indexed donor, uint256 indexed campaignId, uint256 amount, uint256 nftSerialNumber);
+    event RefundClaimed(address indexed donor, uint256 indexed campaignId, uint256 amount);
     event RefundsEnabled(uint256 indexed campaignId, uint256 refundRatioBps);
 
     // Multisig Events
     event TreasurySignerAdded(address indexed signer, address indexed addedBy);
-    event TreasurySignerRemoved(
-        address indexed signer,
-        address indexed removedBy
-    );
+    event TreasurySignerRemoved(address indexed signer, address indexed removedBy);
     event TreasuryThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
-    event ProposalCreated(
-        uint256 indexed proposalId,
-        address indexed creator,
-        string description
-    );
-    event ProposalApproved(
-        uint256 indexed proposalId,
-        address indexed approver
-    );
-    event ProposalExecuted(
-        uint256 indexed proposalId,
-        address indexed executor
-    );
+    event ProposalCreated(uint256 indexed proposalId, address indexed creator, string description);
+    event ProposalApproved(uint256 indexed proposalId, address indexed approver);
+    event ProposalExecuted(uint256 indexed proposalId, address indexed executor);
 
     // Platform Events
-    event PlatformWalletUpdated(
-        address indexed oldWallet,
-        address indexed newWallet
-    );
-    event EmergencyWithdrawal(
-        address indexed token,
-        address indexed recipient,
-        uint256 amount
-    );
+    event PlatformWalletUpdated(address indexed oldWallet, address indexed newWallet);
+    event EmergencyWithdrawal(address indexed token, address indexed recipient, uint256 amount);
 
     // ============ Errors ============
 
@@ -242,11 +176,7 @@ contract DonateOnChain is
     error AccountBlacklistedError(address account);
     error InvalidBPSSplit(uint256 ngo, uint256 designer, uint256 platform);
     error CampaignNotFound(uint256 campaignId);
-    error InvalidCampaignState(
-        uint256 campaignId,
-        CampaignState current,
-        CampaignState required
-    );
+    error InvalidCampaignState(uint256 campaignId, CampaignState current, CampaignState required);
     error DeadlineInPast(uint256 deadline);
     error ZeroAmount();
     error FundsAlreadyClaimed(uint256 campaignId);
@@ -256,28 +186,21 @@ contract DonateOnChain is
     error NotTreasurySigner(address caller);
     error ProposalAlreadyApproved(uint256 proposalId, address signer);
     error ProposalAlreadyExecuted(uint256 proposalId);
-    error InsufficientApprovals(
-        uint256 proposalId,
-        uint256 current,
-        uint256 required
-    );
+    error InsufficientApprovals(uint256 proposalId, uint256 current, uint256 required);
     error ProposalExecutionFailed(uint256 proposalId);
     error TransferFailed(address recipient, uint256 amount);
     error BelowMinimumDonation(uint256 amount, uint256 minimum);
     error InvalidPageSize(uint256 size, uint256 maximum);
-    error InsufficientCampaignBalance(
-        uint256 campaignId,
-        uint256 available,
-        uint256 required
-    );
+    error InsufficientCampaignBalance(uint256 campaignId, uint256 available, uint256 required);
     error CannotClaimFromFailedCampaign(uint256 campaignId);
 
     // ============ Modifiers ============
 
     modifier onlyKycVerified() {
         if (!isKycVerified[msg.sender]) revert NotKycVerified(msg.sender);
-        if (isBlacklisted[msg.sender])
+        if (isBlacklisted[msg.sender]) {
             revert AccountBlacklistedError(msg.sender);
+        }
         _;
     }
 
@@ -307,22 +230,14 @@ contract DonateOnChain is
         address _platformWallet
     ) public initializer {
         if (admin == address(0)) revert InvalidAddress(admin);
-        if (_platformWallet == address(0))
+        if (_platformWallet == address(0)) {
             revert InvalidAddress(_platformWallet);
-        if (_treasurySigners.length < MIN_MULTISIG_THRESHOLD) {
-            revert InvalidMultisigThreshold(
-                _treasuryThreshold,
-                _treasurySigners.length
-            );
         }
-        if (
-            _treasuryThreshold < MIN_MULTISIG_THRESHOLD ||
-            _treasuryThreshold > _treasurySigners.length
-        ) {
-            revert InvalidMultisigThreshold(
-                _treasuryThreshold,
-                _treasurySigners.length
-            );
+        if (_treasurySigners.length < MIN_MULTISIG_THRESHOLD) {
+            revert InvalidMultisigThreshold(_treasuryThreshold, _treasurySigners.length);
+        }
+        if (_treasuryThreshold < MIN_MULTISIG_THRESHOLD || _treasuryThreshold > _treasurySigners.length) {
+            revert InvalidMultisigThreshold(_treasuryThreshold, _treasurySigners.length);
         }
 
         __UUPSUpgradeable_init();
@@ -337,8 +252,9 @@ contract DonateOnChain is
         treasuryThreshold = _treasuryThreshold;
 
         for (uint256 i = 0; i < _treasurySigners.length; i++) {
-            if (_treasurySigners[i] == address(0))
+            if (_treasurySigners[i] == address(0)) {
                 revert InvalidAddress(_treasurySigners[i]);
+            }
             if (isTreasurySigner[_treasurySigners[i]]) continue; // Skip duplicates
 
             treasurySigners.push(_treasurySigners[i]);
@@ -353,9 +269,7 @@ contract DonateOnChain is
      * @notice Verify an account for KYC compliance
      * @param account Address to verify
      */
-    function verifyAccount(
-        address account
-    ) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
+    function verifyAccount(address account) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
         if (account == address(0)) revert InvalidAddress(account);
         isKycVerified[account] = true;
         emit AccountVerified(account, msg.sender);
@@ -365,9 +279,7 @@ contract DonateOnChain is
      * @notice Revoke KYC verification from an account
      * @param account Address to revoke
      */
-    function revokeVerification(
-        address account
-    ) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
+    function revokeVerification(address account) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
         if (account == address(0)) revert InvalidAddress(account);
         isKycVerified[account] = false;
         emit VerificationRevoked(account, msg.sender);
@@ -377,9 +289,7 @@ contract DonateOnChain is
      * @notice Blacklist an account flagged by AML monitors
      * @param account Address to blacklist
      */
-    function blacklistAccount(
-        address account
-    ) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
+    function blacklistAccount(address account) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
         if (account == address(0)) revert InvalidAddress(account);
         isBlacklisted[account] = true;
         emit AccountBlacklisted(account, msg.sender);
@@ -389,9 +299,7 @@ contract DonateOnChain is
      * @notice Remove an account from blacklist
      * @param account Address to unblacklist
      */
-    function unblacklistAccount(
-        address account
-    ) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
+    function unblacklistAccount(address account) external onlyRole(COMPLIANCE_OFFICER_ROLE) {
         if (account == address(0)) revert InvalidAddress(account);
         isBlacklisted[account] = false;
         emit AccountUnblacklisted(account, msg.sender);
@@ -422,11 +330,7 @@ contract DonateOnChain is
 
         uint256 totalBps = ngoShareBps + designerShareBps + platformShareBps;
         if (totalBps != MAX_BPS) {
-            revert InvalidBPSSplit(
-                ngoShareBps,
-                designerShareBps,
-                platformShareBps
-            );
+            revert InvalidBPSSplit(ngoShareBps, designerShareBps, platformShareBps);
         }
 
         // Effects
@@ -454,13 +358,7 @@ contract DonateOnChain is
 
         campaignsByNGO[msg.sender].push(campaignId);
 
-        emit CampaignCreated(
-            campaignId,
-            msg.sender,
-            designer,
-            targetAmount,
-            deadline
-        );
+        emit CampaignCreated(campaignId, msg.sender, designer, targetAmount, deadline);
 
         return campaignId;
     }
@@ -470,27 +368,18 @@ contract DonateOnChain is
      * @param campaignId Campaign to vet
      * @param approved True to approve, false to reject
      */
-    function vetCampaign(
-        uint256 campaignId,
-        bool approved
-    ) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
+    function vetCampaign(uint256 campaignId, bool approved) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
         Campaign storage campaign = campaigns[campaignId];
 
         // Checks
         if (campaign.ngo == address(0)) revert CampaignNotFound(campaignId);
         if (campaign.state != CampaignState.Pending_Vetting) {
-            revert InvalidCampaignState(
-                campaignId,
-                campaign.state,
-                CampaignState.Pending_Vetting
-            );
+            revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Pending_Vetting);
         }
 
         // Effects
         CampaignState oldState = campaign.state;
-        campaign.state = approved
-            ? CampaignState.Active
-            : CampaignState.Failed_Refundable;
+        campaign.state = approved ? CampaignState.Active : CampaignState.Failed_Refundable;
 
         emit CampaignVetted(campaignId, approved, msg.sender);
         emit CampaignStateChanged(campaignId, oldState, campaign.state);
@@ -501,10 +390,7 @@ contract DonateOnChain is
      * @param nftId NFT serial number
      * @param ipfsCID New IPFS CID with impact report
      */
-    function updateImpactReport(
-        uint256 nftId,
-        string calldata ipfsCID
-    ) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
+    function updateImpactReport(uint256 nftId, string calldata ipfsCID) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
         // TODO: Integrate with HTS to update NFT metadata
         // This requires HTS metadata key management
         emit ImpactReportUpdated(nftId, ipfsCID, msg.sender);
@@ -518,10 +404,7 @@ contract DonateOnChain is
      * @param campaignId Target campaign
      * @param metadataHash IPFS hash for NFT metadata
      */
-    function contribute(
-        uint256 campaignId,
-        string calldata metadataHash
-    )
+    function contribute(uint256 campaignId, string calldata metadataHash)
         external
         payable
         nonReentrant
@@ -544,11 +427,7 @@ contract DonateOnChain is
         }
 
         if (campaign.state != CampaignState.Active) {
-            revert InvalidCampaignState(
-                campaignId,
-                campaign.state,
-                CampaignState.Active
-            );
+            revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Active);
         }
 
         // === EFFECTS ===
@@ -562,11 +441,7 @@ contract DonateOnChain is
         if (campaignBalances[campaignId] + msg.value >= campaign.targetAmount) {
             CampaignState oldState = campaign.state;
             campaign.state = CampaignState.Goal_Reached;
-            emit CampaignStateChanged(
-                campaignId,
-                oldState,
-                CampaignState.Goal_Reached
-            );
+            emit CampaignStateChanged(campaignId, oldState, CampaignState.Goal_Reached);
         }
 
         donations[donationId] = Donation({
@@ -602,9 +477,7 @@ contract DonateOnChain is
      *      Blacklist only prevents NEW donations, not claiming existing earned funds.
      * @param campaignId Campaign to claim from
      */
-    function claimFunds(
-        uint256 campaignId
-    ) external nonReentrant whenNotPaused {
+    function claimFunds(uint256 campaignId) external nonReentrant whenNotPaused {
         Campaign storage campaign = campaigns[campaignId];
 
         // === CHECKS ===
@@ -612,11 +485,7 @@ contract DonateOnChain is
         if (msg.sender != campaign.ngo) revert NotKycVerified(msg.sender); // Reusing error
         // NOTE: Intentionally NO blacklist check - NGOs can always claim earned funds
         if (campaign.state != CampaignState.Goal_Reached) {
-            revert InvalidCampaignState(
-                campaignId,
-                campaign.state,
-                CampaignState.Goal_Reached
-            );
+            revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Goal_Reached);
         }
         if (campaign.fundsClaimed) revert FundsAlreadyClaimed(campaignId);
 
@@ -637,8 +506,7 @@ contract DonateOnChain is
 
         // Use claimableAmount instead of currentAmount for accurate accounting
         uint256 ngoAmount = (claimableAmount * campaign.ngoShareBps) / MAX_BPS;
-        uint256 designerAmount = (claimableAmount * campaign.designerShareBps) /
-            MAX_BPS;
+        uint256 designerAmount = (claimableAmount * campaign.designerShareBps) / MAX_BPS;
         uint256 platformAmount = claimableAmount - ngoAmount - designerAmount;
 
         // CRITICAL FIX: Zero out campaign balance before transfers (CEI pattern)
@@ -659,28 +527,22 @@ contract DonateOnChain is
      * @param donationId Donation to refund
      * @dev Uses pro-rata refund mechanism to ensure fair distribution when partial funds available
      */
-    function claimRefund(
-        uint256 donationId
-    ) external nonReentrant whenNotPaused {
+    function claimRefund(uint256 donationId) external nonReentrant whenNotPaused {
         Donation storage donation = donations[donationId];
 
         // === CHECKS ===
-        if (donation.donor != msg.sender)
+        if (donation.donor != msg.sender) {
             revert NotDonor(msg.sender, donationId);
+        }
         if (donation.refunded) revert DonationAlreadyRefunded(donationId);
 
         Campaign storage campaign = campaigns[donation.campaignId];
         if (!campaign.refundsEnabled) {
-            revert InvalidCampaignState(
-                donation.campaignId,
-                campaign.state,
-                CampaignState.Failed_Refundable
-            );
+            revert InvalidCampaignState(donation.campaignId, campaign.state, CampaignState.Failed_Refundable);
         }
 
         // CRITICAL FIX: Pro-rata refund calculation
-        uint256 refundAmount = (donation.amount * campaign.refundRatioBps) /
-            10000;
+        uint256 refundAmount = (donation.amount * campaign.refundRatioBps) / 10000;
 
         // === EFFECTS ===
         donation.refunded = true;
@@ -701,17 +563,11 @@ contract DonateOnChain is
      * @dev Calculates fair refund ratio based on available balance vs total raised
      * @dev CRITICAL: Uses cached totalRaised to prevent gas DoS and validates division
      */
-    function enableRefunds(
-        uint256 campaignId
-    ) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
+    function enableRefunds(uint256 campaignId) external onlyRole(CAMPAIGN_MANAGER_ROLE) {
         Campaign storage campaign = campaigns[campaignId];
 
         if (campaign.state != CampaignState.Failed_Refundable) {
-            revert InvalidCampaignState(
-                campaignId,
-                campaign.state,
-                CampaignState.Failed_Refundable
-            );
+            revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Failed_Refundable);
         }
         if (campaign.refundsEnabled) {
             revert("Refunds already enabled");
@@ -743,17 +599,10 @@ contract DonateOnChain is
         if (campaign.ngo == address(0)) revert CampaignNotFound(campaignId);
         if (campaign.state != CampaignState.Active) return;
 
-        if (
-            block.timestamp > campaign.deadline &&
-            campaignBalances[campaignId] < campaign.targetAmount
-        ) {
+        if (block.timestamp > campaign.deadline && campaignBalances[campaignId] < campaign.targetAmount) {
             CampaignState oldState = campaign.state;
             campaign.state = CampaignState.Failed_Refundable;
-            emit CampaignStateChanged(
-                campaignId,
-                oldState,
-                CampaignState.Failed_Refundable
-            );
+            emit CampaignStateChanged(campaignId, oldState, CampaignState.Failed_Refundable);
         }
     }
 
@@ -763,16 +612,11 @@ contract DonateOnChain is
      * @notice Add a new treasury signer
      * @param signer Address to add
      */
-    function addTreasurySigner(
-        address signer
-    ) external onlyRole(TREASURY_ADMIN_ROLE) {
+    function addTreasurySigner(address signer) external onlyRole(TREASURY_ADMIN_ROLE) {
         if (signer == address(0)) revert InvalidAddress(signer);
         if (isTreasurySigner[signer]) return;
         if (treasurySigners.length >= MAX_MULTISIG_SIGNERS) {
-            revert InvalidMultisigThreshold(
-                treasuryThreshold,
-                treasurySigners.length
-            );
+            revert InvalidMultisigThreshold(treasuryThreshold, treasurySigners.length);
         }
 
         treasurySigners.push(signer);
@@ -784,17 +628,12 @@ contract DonateOnChain is
      * @notice Remove a treasury signer
      * @param signer Address to remove
      */
-    function removeTreasurySigner(
-        address signer
-    ) external onlyRole(TREASURY_ADMIN_ROLE) {
+    function removeTreasurySigner(address signer) external onlyRole(TREASURY_ADMIN_ROLE) {
         if (!isTreasurySigner[signer]) return;
 
         // Ensure we maintain minimum threshold
         if (treasurySigners.length - 1 < treasuryThreshold) {
-            revert InvalidMultisigThreshold(
-                treasuryThreshold,
-                treasurySigners.length - 1
-            );
+            revert InvalidMultisigThreshold(treasuryThreshold, treasurySigners.length - 1);
         }
 
         isTreasurySigner[signer] = false;
@@ -802,9 +641,7 @@ contract DonateOnChain is
         // Remove from array
         for (uint256 i = 0; i < treasurySigners.length; i++) {
             if (treasurySigners[i] == signer) {
-                treasurySigners[i] = treasurySigners[
-                    treasurySigners.length - 1
-                ];
+                treasurySigners[i] = treasurySigners[treasurySigners.length - 1];
                 treasurySigners.pop();
                 break;
             }
@@ -817,17 +654,9 @@ contract DonateOnChain is
      * @notice Update treasury threshold
      * @param newThreshold New signature threshold
      */
-    function updateTreasuryThreshold(
-        uint256 newThreshold
-    ) external onlyRole(TREASURY_ADMIN_ROLE) {
-        if (
-            newThreshold < MIN_MULTISIG_THRESHOLD ||
-            newThreshold > treasurySigners.length
-        ) {
-            revert InvalidMultisigThreshold(
-                newThreshold,
-                treasurySigners.length
-            );
+    function updateTreasuryThreshold(uint256 newThreshold) external onlyRole(TREASURY_ADMIN_ROLE) {
+        if (newThreshold < MIN_MULTISIG_THRESHOLD || newThreshold > treasurySigners.length) {
+            revert InvalidMultisigThreshold(newThreshold, treasurySigners.length);
         }
 
         uint256 oldThreshold = treasuryThreshold;
@@ -842,12 +671,11 @@ contract DonateOnChain is
      * @param data Calldata
      * @param description Proposal description
      */
-    function createTreasuryProposal(
-        address target,
-        uint256 value,
-        bytes calldata data,
-        string calldata description
-    ) external onlyTreasurySigner returns (uint256) {
+    function createTreasuryProposal(address target, uint256 value, bytes calldata data, string calldata description)
+        external
+        onlyTreasurySigner
+        returns (uint256)
+    {
         uint256 proposalId = proposalCount++;
 
         MultisigProposal storage proposal = treasuryProposals[proposalId];
@@ -870,14 +698,13 @@ contract DonateOnChain is
      * @dev Uses O(1) mapping for approval tracking to prevent gas limit issues
      *      as proposal history grows. No iteration over signers required.
      */
-    function approveTreasuryProposal(
-        uint256 proposalId
-    ) external onlyTreasurySigner {
+    function approveTreasuryProposal(uint256 proposalId) external onlyTreasurySigner {
         MultisigProposal storage proposal = treasuryProposals[proposalId];
 
         if (proposal.executed) revert ProposalAlreadyExecuted(proposalId);
-        if (proposal.approvals[msg.sender])
+        if (proposal.approvals[msg.sender]) {
             revert ProposalAlreadyApproved(proposalId, msg.sender);
+        }
 
         proposal.approvals[msg.sender] = true;
         proposal.approvalCount++;
@@ -890,24 +717,17 @@ contract DonateOnChain is
      * @param proposalId Proposal to execute
      * @dev CRITICAL: Validates proposal value doesn't drain campaign funds
      */
-    function executeTreasuryProposal(
-        uint256 proposalId
-    ) external onlyTreasurySigner nonReentrant {
+    function executeTreasuryProposal(uint256 proposalId) external onlyTreasurySigner nonReentrant {
         MultisigProposal storage proposal = treasuryProposals[proposalId];
 
         if (proposal.executed) revert ProposalAlreadyExecuted(proposalId);
         if (proposal.approvalCount < treasuryThreshold) {
-            revert InsufficientApprovals(
-                proposalId,
-                proposal.approvalCount,
-                treasuryThreshold
-            );
+            revert InsufficientApprovals(proposalId, proposal.approvalCount, treasuryThreshold);
         }
 
         // CRITICAL FIX: Ensure treasury doesn't drain campaign funds (O(1) access)
         if (proposal.value > 0) {
-            uint256 availableTreasury = address(this).balance -
-                totalCampaignBalances;
+            uint256 availableTreasury = address(this).balance - totalCampaignBalances;
 
             if (proposal.value > availableTreasury) {
                 revert InsufficientCampaignBalance(
@@ -920,9 +740,7 @@ contract DonateOnChain is
 
         proposal.executed = true;
 
-        (bool success, ) = proposal.target.call{value: proposal.value}(
-            proposal.data
-        );
+        (bool success,) = proposal.target.call{value: proposal.value}(proposal.data);
         if (!success) revert ProposalExecutionFailed(proposalId);
 
         emit ProposalExecuted(proposalId, msg.sender);
@@ -934,9 +752,7 @@ contract DonateOnChain is
      * @notice Update platform wallet
      * @param newWallet New platform wallet address
      */
-    function updatePlatformWallet(
-        address newWallet
-    ) external onlyRole(TREASURY_ADMIN_ROLE) {
+    function updatePlatformWallet(address newWallet) external onlyRole(TREASURY_ADMIN_ROLE) {
         if (newWallet == address(0)) revert InvalidAddress(newWallet);
         address oldWallet = platformWallet;
         platformWallet = newWallet;
@@ -947,9 +763,7 @@ contract DonateOnChain is
      * @notice Set NFT token ID
      * @param tokenId HTS NFT token address
      */
-    function setNftTokenId(
-        address tokenId
-    ) external onlyRole(TREASURY_ADMIN_ROLE) {
+    function setNftTokenId(address tokenId) external onlyRole(TREASURY_ADMIN_ROLE) {
         if (tokenId == address(0)) revert InvalidAddress(tokenId);
         nftTokenId = tokenId;
     }
@@ -973,10 +787,7 @@ contract DonateOnChain is
      * @param recipient Recipient address
      * @param amount Amount to withdraw
      */
-    function emergencyWithdraw(
-        address recipient,
-        uint256 amount
-    ) external onlyRole(TREASURY_ADMIN_ROLE) whenPaused {
+    function emergencyWithdraw(address recipient, uint256 amount) external onlyRole(TREASURY_ADMIN_ROLE) whenPaused {
         if (recipient == address(0)) revert InvalidAddress(recipient);
         _transferHbar(payable(recipient), amount);
         emit EmergencyWithdrawal(address(0), recipient, amount);
@@ -984,33 +795,23 @@ contract DonateOnChain is
 
     // ============ View Functions ============
 
-    function getCampaign(
-        uint256 campaignId
-    ) external view returns (Campaign memory) {
+    function getCampaign(uint256 campaignId) external view returns (Campaign memory) {
         return campaigns[campaignId];
     }
 
-    function getDonation(
-        uint256 donationId
-    ) external view returns (Donation memory) {
+    function getDonation(uint256 donationId) external view returns (Donation memory) {
         return donations[donationId];
     }
 
-    function getCampaignsByNGO(
-        address ngo
-    ) external view returns (uint256[] memory) {
+    function getCampaignsByNGO(address ngo) external view returns (uint256[] memory) {
         return campaignsByNGO[ngo];
     }
 
-    function getDonationsByCampaign(
-        uint256 campaignId
-    ) external view returns (uint256[] memory) {
+    function getDonationsByCampaign(uint256 campaignId) external view returns (uint256[] memory) {
         return donationsByCampaign[campaignId];
     }
 
-    function getDonationsByDonor(
-        address donor
-    ) external view returns (uint256[] memory) {
+    function getDonationsByDonor(address donor) external view returns (uint256[] memory) {
         return donationsByDonor[donor];
     }
 
@@ -1018,16 +819,11 @@ contract DonateOnChain is
         return treasurySigners;
     }
 
-    function getCampaignBalance(
-        uint256 campaignId
-    ) external view returns (uint256) {
+    function getCampaignBalance(uint256 campaignId) external view returns (uint256) {
         return campaignBalances[campaignId];
     }
 
-    function getProposalApprovalStatus(
-        uint256 proposalId,
-        address signer
-    ) external view returns (bool) {
+    function getProposalApprovalStatus(uint256 proposalId, address signer) external view returns (bool) {
         return treasuryProposals[proposalId].approvals[signer];
     }
 
@@ -1041,11 +837,11 @@ contract DonateOnChain is
      * @return campaignIds Array of campaign IDs
      * @return total Total number of campaigns for this NGO
      */
-    function getCampaignsByNGOPaginated(
-        address ngo,
-        uint256 offset,
-        uint256 limit
-    ) external view returns (uint256[] memory campaignIds, uint256 total) {
+    function getCampaignsByNGOPaginated(address ngo, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory campaignIds, uint256 total)
+    {
         if (limit > MAX_PAGE_SIZE) revert InvalidPageSize(limit, MAX_PAGE_SIZE);
 
         uint256[] storage allCampaigns = campaignsByNGO[ngo];
@@ -1078,11 +874,11 @@ contract DonateOnChain is
      * @return donationIds Array of donation IDs
      * @return total Total number of donations for this campaign
      */
-    function getDonationsByCampaignPaginated(
-        uint256 campaignId,
-        uint256 offset,
-        uint256 limit
-    ) external view returns (uint256[] memory donationIds, uint256 total) {
+    function getDonationsByCampaignPaginated(uint256 campaignId, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory donationIds, uint256 total)
+    {
         if (limit > MAX_PAGE_SIZE) revert InvalidPageSize(limit, MAX_PAGE_SIZE);
 
         uint256[] storage allDonations = donationsByCampaign[campaignId];
@@ -1115,11 +911,11 @@ contract DonateOnChain is
      * @return donationIds Array of donation IDs
      * @return total Total number of donations by this donor
      */
-    function getDonationsByDonorPaginated(
-        address donor,
-        uint256 offset,
-        uint256 limit
-    ) external view returns (uint256[] memory donationIds, uint256 total) {
+    function getDonationsByDonorPaginated(address donor, uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory donationIds, uint256 total)
+    {
         if (limit > MAX_PAGE_SIZE) revert InvalidPageSize(limit, MAX_PAGE_SIZE);
 
         uint256[] storage allDonations = donationsByDonor[donor];
@@ -1151,10 +947,11 @@ contract DonateOnChain is
      * @return campaignIds Array of active campaign IDs
      * @return total Total number of active campaigns
      */
-    function getActiveCampaignsPaginated(
-        uint256 offset,
-        uint256 limit
-    ) external view returns (uint256[] memory campaignIds, uint256 total) {
+    function getActiveCampaignsPaginated(uint256 offset, uint256 limit)
+        external
+        view
+        returns (uint256[] memory campaignIds, uint256 total)
+    {
         if (limit > MAX_PAGE_SIZE) revert InvalidPageSize(limit, MAX_PAGE_SIZE);
 
         // First, count active campaigns
@@ -1182,11 +979,7 @@ contract DonateOnChain is
         uint256 currentIndex = 0;
         uint256 resultIndex = 0;
 
-        for (
-            uint256 i = 0;
-            i < campaignCount && resultIndex < resultLength;
-            i++
-        ) {
+        for (uint256 i = 0; i < campaignCount && resultIndex < resultLength; i++) {
             if (campaigns[i].state == CampaignState.Active) {
                 if (currentIndex >= offset) {
                     campaignIds[resultIndex] = i;
@@ -1203,7 +996,7 @@ contract DonateOnChain is
 
     function _transferHbar(address payable recipient, uint256 amount) private {
         if (amount == 0) return;
-        (bool success, ) = recipient.call{value: amount}("");
+        (bool success,) = recipient.call{value: amount}("");
         if (!success) revert TransferFailed(recipient, amount);
     }
 
@@ -1213,9 +1006,7 @@ contract DonateOnChain is
      * @dev Calculates difference between contract balance and campaign balances
      * @param recipient Address to receive trapped funds
      */
-    function recoverTrappedFunds(
-        address recipient
-    ) external onlyRole(TREASURY_ADMIN_ROLE) whenPaused {
+    function recoverTrappedFunds(address recipient) external onlyRole(TREASURY_ADMIN_ROLE) whenPaused {
         if (recipient == address(0)) revert InvalidAddress(recipient);
 
         uint256 contractBalance = address(this).balance;
@@ -1228,9 +1019,7 @@ contract DonateOnChain is
         }
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     // ============ Receive/Fallback Functions ============
 

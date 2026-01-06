@@ -10,9 +10,10 @@ function toWei(hbar: number) {
 export { toWei }
 
 // Lightweight fetch wrapper for IPFS JSON
+// Using Cloudflare's IPFS gateway for faster loading
 async function fetchIpfsJson(cid: string): Promise<any | null> {
   try {
-    const res = await fetch(`https://ipfs.io/ipfs/${cid}`)
+    const res = await fetch(`https://cloudflare-ipfs.com/ipfs/${cid}`)
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -94,7 +95,7 @@ export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number;
         category = meta.category || undefined
         if (meta.image) {
           const raw = String(meta.image)
-          image = raw.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${raw.replace('ipfs://','')}` : raw
+          image = raw.startsWith('ipfs://') ? `https://cloudflare-ipfs.com/ipfs/${raw.replace('ipfs://', '')}` : raw
         }
       }
     }
@@ -107,7 +108,7 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
   try {
     const activeIds = await listActiveCampaignIds()
     const campaigns: any[] = []
-    
+
     for (const id of activeIds) {
       try {
         const chainCampaign = await getCampaign(id)
@@ -115,14 +116,14 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
         try {
           const donations = await getDonationsByCampaign(id)
           amountRaised = donations.totalRaisedHBAR
-        } catch {}
-        
+        } catch { }
+
         let title = chainCampaign.title || ''
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
         let target = Number(chainCampaign.goalHBAR)
-        
+
         try {
           const cid = await getCampaignMetadataCid(id)
           if (cid) {
@@ -137,8 +138,8 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
               }
             }
           }
-        } catch {}
-        
+        } catch { }
+
         campaigns.push({
           id: Number(id),
           onchainId: Number(id),
@@ -159,12 +160,12 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
         continue
       }
     }
-    
+
     for (const campaign of campaigns) {
       const target = campaign.target || 0
       campaign.percentage = target > 0 ? (campaign.amountRaised / target) * 100 : 0
     }
-    
+
     return campaigns
   } catch (error) {
     console.error('Error listing active campaigns from chain:', error)
@@ -176,7 +177,7 @@ const ERC721_ABI_MIN = [
   { "type": "function", "name": "balanceOf", "inputs": [{ "name": "owner", "type": "address" }], "outputs": [{ "name": "", "type": "uint256" }], "stateMutability": "view" },
   { "type": "function", "name": "tokenOfOwnerByIndex", "inputs": [{ "name": "owner", "type": "address" }, { "name": "index", "type": "uint256" }], "outputs": [{ "name": "", "type": "uint256" }], "stateMutability": "view" },
   { "type": "function", "name": "tokenURI", "inputs": [{ "name": "tokenId", "type": "uint256" }], "outputs": [{ "name": "", "type": "string" }], "stateMutability": "view" },
-  { "type": "event", "name": "Transfer", "inputs": [ { "name": "from", "type": "address", "indexed": true }, { "name": "to", "type": "address", "indexed": true }, { "name": "tokenId", "type": "uint256", "indexed": true } ] }
+  { "type": "event", "name": "Transfer", "inputs": [{ "name": "from", "type": "address", "indexed": true }, { "name": "to", "type": "address", "indexed": true }, { "name": "tokenId", "type": "uint256", "indexed": true }] }
 ] as const
 
 export async function getProofNftAddress(): Promise<HexAddress | null> {
@@ -224,7 +225,7 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{ token
           }
         } catch { continue }
       }
-    } catch {}
+    } catch { }
   }
 
   const uniqueIds = Array.from(new Set(tokenIds.map(String))).map(v => BigInt(v))
@@ -233,14 +234,14 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{ token
     let uri: string | undefined
     try {
       uri = await read<string>({ address: collection, abi: ERC721_ABI_MIN as any, functionName: 'tokenURI', args: [id] })
-    } catch {}
+    } catch { }
     let image: string | undefined
     if (uri) {
       try {
-        const http = uri.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${uri.replace('ipfs://','')}` : uri
+        const http = uri.startsWith('ipfs://') ? `https://cloudflare-ipfs.com/ipfs/${uri.replace('ipfs://', '')}` : uri
         const meta = await fetch(http).then(r => r.json()).catch(() => null)
-        image = meta?.image ? (meta.image.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${meta.image.replace('ipfs://','')}` : meta.image) : undefined
-      } catch {}
+        image = meta?.image ? (meta.image.startsWith('ipfs://') ? `https://cloudflare-ipfs.com/ipfs/${meta.image.replace('ipfs://', '')}` : meta.image) : undefined
+      } catch { }
     }
     results.push({ tokenId: id, tokenURI: uri, image })
   }
@@ -251,10 +252,10 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
   try {
     const activeIds = await listActiveCampaignIds()
     const syncedCampaigns: any[] = []
-    
+
     for (const firebaseCampaign of firebaseCampaigns) {
       let onchainId: bigint | undefined
-      
+
       if (firebaseCampaign.onchainId) {
         onchainId = BigInt(firebaseCampaign.onchainId)
       } else if (firebaseCampaign.ngoWallet) {
@@ -270,7 +271,7 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
           }
         }
       }
-      
+
       if (onchainId) {
         try {
           const chainCampaign = await getCampaign(onchainId)
@@ -294,7 +295,7 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
         syncedCampaigns.push(firebaseCampaign)
       }
     }
-    
+
     return syncedCampaigns
   } catch (error) {
     console.error('Error syncing campaigns with on-chain:', error)
@@ -304,11 +305,11 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
 
 export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean }> {
   const c = await read<any>({ address: addresses.CAMPAIGN_REGISTRY as HexAddress, abi: abis.CampaignRegistry as any, functionName: 'getCampaign', args: [id] })
-  
+
   let ngo: HexAddress
   let designer: HexAddress | undefined
   let active: boolean
-  
+
   if (Array.isArray(c)) {
     ngo = c[0] as HexAddress
     designer = c[1] as HexAddress | undefined
@@ -326,7 +327,7 @@ export async function getCampaign(id: bigint): Promise<Campaign & { active?: boo
   } else {
     throw new Error('Invalid campaign data')
   }
-  
+
   return {
     id: BigInt(id),
     title: c.title ?? '',
@@ -394,34 +395,34 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
   const platformBps = params.platformBps ?? 1000
   const metadataHash = keccak256(stringToHex(params.metadataCid))
   const targetWei = toWei(params.targetHBAR)
-  
+
   const campaignCountBefore = await read<bigint>({
     address: addresses.CAMPAIGN_REGISTRY as HexAddress,
     abi: abis.CampaignRegistry as any,
     functionName: 'campaignCount',
     args: []
   }).catch(() => 0n)
-  
+
   const hash = await write({
     address: addresses.CAMPAIGN_REGISTRY as HexAddress,
     abi: abis.CampaignRegistry as any,
     functionName: 'createCampaignByNGO',
     args: [params.designer, params.title, params.description, params.imageCid, metadataHash, targetWei, BigInt(ngoBps), BigInt(designerBps), BigInt(platformBps)]
   })
-  
+
   const receipt = await wait(hash)
-  
+
   const status = receipt.status as string | number | undefined
   if (status === 'reverted' || status === 0 || status === '0x0') {
     throw new Error('Campaign creation transaction failed or was reverted')
   }
-  
+
   let campaignId: bigint | undefined
-  
+
   try {
     const client = publicClient()
     const fullReceipt = await client.getTransactionReceipt({ hash })
-    
+
     if (fullReceipt.logs) {
       for (const log of fullReceipt.logs) {
         try {
@@ -442,7 +443,7 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
   } catch (eventError) {
     console.warn('Failed to parse events, trying campaign count method:', eventError)
   }
-  
+
   if (!campaignId) {
     try {
       const campaignCountAfter = await read<bigint>({
@@ -451,7 +452,7 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
         functionName: 'campaignCount',
         args: []
       })
-      
+
       if (campaignCountAfter > campaignCountBefore) {
         campaignId = campaignCountAfter - 1n
       } else {
@@ -470,13 +471,13 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
       }
     }
   }
-  
+
   if (campaignId === undefined) {
     throw new Error('Failed to retrieve campaign ID after creation. Transaction may have failed.')
   }
-  
+
   await new Promise(resolve => setTimeout(resolve, 1000))
-  
+
   try {
     const verifyCampaign = await getCampaign(campaignId)
     if (!verifyCampaign || !verifyCampaign.ngo) {
@@ -485,7 +486,7 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
   } catch (verifyError) {
     console.warn('Campaign verification failed, but ID was retrieved:', verifyError)
   }
-  
+
   return { receipt, campaignId }
 }
 
@@ -539,19 +540,19 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
   if (params.valueHBAR <= 0) {
     throw new Error('Donation amount must be greater than zero')
   }
-  
+
   const value = toWei(params.valueHBAR)
   const metadataHash = params.metadataHash || ''
-  
+
   try {
     const hash = await write({ address: addresses.DONATION_MANAGER as HexAddress, abi: abis.DonationManager as any, functionName: 'donate', args: [params.campaignId, metadataHash], value })
-  return await wait(hash)
+    return await wait(hash)
   } catch (error: any) {
     console.error('Donation error details:', error)
-    
+
     const errorData = error?.data || error?.cause?.data || error?.reason
     const errorSignature = typeof errorData === 'string' && errorData.startsWith('0x') ? errorData.slice(0, 10) : null
-    
+
     if (errorSignature) {
       switch (errorSignature) {
         case '0x2c067cd7':
@@ -566,7 +567,7 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
           console.warn('Unknown error signature:', errorSignature)
       }
     }
-    
+
     if (error?.message) {
       const errorMsg = error.message.toLowerCase()
       if (errorMsg.includes('inactivecampaign') || errorMsg.includes('inactive') || errorMsg.includes('0x2c067cd7')) {
@@ -582,7 +583,7 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
         throw new Error(`Campaign ${params.campaignId} not found on-chain. The campaign may not exist or may have been removed.`)
       }
     }
-    
+
     if (error?.shortMessage) {
       const shortMsg = error.shortMessage.toLowerCase()
       if (shortMsg.includes('inactive') || shortMsg.includes('0x2c067cd7')) {
@@ -592,14 +593,14 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
         throw new Error(`Campaign ${params.campaignId} not found on-chain. The campaign may not exist or may have been removed.`)
       }
     }
-    
+
     if (error?.cause?.message) {
       const causeMsg = error.cause.message.toLowerCase()
       if (causeMsg.includes('campaign') && (causeMsg.includes('not found') || causeMsg.includes('does not exist'))) {
         throw new Error(`Campaign ${params.campaignId} not found on-chain. The campaign may not exist or may have been removed.`)
       }
     }
-    
+
     throw new Error(`Donation failed: ${error?.message || error?.shortMessage || 'Unknown error. Please verify the campaign exists and try again.'}`)
   }
 }
@@ -666,7 +667,7 @@ export async function simulatePurchase(items: { designId: bigint; quantity: numb
 
 export async function createDesign(params: { campaignId: bigint; designName: string; description: string; designFileCid: string; previewImageCid: string; metadataCid: string; priceHBAR: number }) {
   const price = toWei(params.priceHBAR)
-  
+
   if (params.priceHBAR <= 0 || params.priceHBAR > 1000000) {
     throw new Error(`Invalid price: ${params.priceHBAR} HBAR. Must be between 0 and 1,000,000.`)
   }
