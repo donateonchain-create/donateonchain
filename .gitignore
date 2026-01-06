@@ -18,6 +18,8 @@ docs/
 .env.backup
 .env.old
 .env.example
+# NOTE: .env.1password is safe to commit - it only contains secret references, not actual values
+!.env.1password
 
 # Node modules
 node_modules/
@@ -61,3 +63,9 @@ SecurityEdgeCases.md
 build.md
 Vulnerability_Response.md
 # IMPROVEMENTS.md is tracked - keep this file in git
+
+# Personal notes and todos
+notes.md
+presentation_notes.md
+ROLES_AND_SCALABILITY.md
+todo/

@@ -39,17 +39,9 @@ interface IHederaTokenService {
      * @return newTotalSupply New total supply
      * @return serialNumbers Array of minted serial numbers
      */
-    function mintToken(
-        address token,
-        int64 amount,
-        bytes[] memory metadata
-    )
+    function mintToken(address token, int64 amount, bytes[] memory metadata)
         external
-        returns (
-            int64 responseCode,
-            int64 newTotalSupply,
-            int64[] memory serialNumbers
-        );
+        returns (int64 responseCode, int64 newTotalSupply, int64[] memory serialNumbers);
 
     /**
      * @notice Updates NFT metadata
@@ -58,11 +50,9 @@ interface IHederaTokenService {
      * @param metadata New metadata
      * @return responseCode HTS response code
      */
-    function updateNftMetadata(
-        address token,
-        int64 serialNumber,
-        bytes memory metadata
-    ) external returns (int64 responseCode);
+    function updateNftMetadata(address token, int64 serialNumber, bytes memory metadata)
+        external
+        returns (int64 responseCode);
 
     /**
      * @notice Transfers NFT
@@ -72,12 +62,9 @@ interface IHederaTokenService {
      * @param serialNumber NFT serial number
      * @return responseCode HTS response code
      */
-    function transferNFT(
-        address token,
-        address sender,
-        address recipient,
-        int64 serialNumber
-    ) external returns (int64 responseCode);
+    function transferNFT(address token, address sender, address recipient, int64 serialNumber)
+        external
+        returns (int64 responseCode);
 
     /**
      * @notice Associates token with account
@@ -85,10 +72,7 @@ interface IHederaTokenService {
      * @param token Token address
      * @return responseCode HTS response code
      */
-    function associateToken(
-        address account,
-        address token
-    ) external returns (int64 responseCode);
+    function associateToken(address account, address token) external returns (int64 responseCode);
 
     /**
      * @notice Creates a new NFT collection
@@ -96,7 +80,8 @@ interface IHederaTokenService {
      * @return responseCode HTS response code
      * @return tokenAddress Created token address
      */
-    function createNonFungibleToken(
-        HederaToken memory token
-    ) external payable returns (int64 responseCode, address tokenAddress);
+    function createNonFungibleToken(HederaToken memory token)
+        external
+        payable
+        returns (int64 responseCode, address tokenAddress);
 }

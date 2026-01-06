@@ -20,7 +20,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
     onClick
 }) => {
     return (
-        <div 
+        <div
             className={`bg-white rounded-3xl p-4 hover:border hover:border-black/10 transition-colors cursor-pointer ${className}`}
             onClick={onClick}
         >
@@ -29,6 +29,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
                     <img
                         src={image}
                         alt={alt}
+                        loading="lazy"
+                        onError={(e) => { e.currentTarget.src = '/placeholder-product.svg' }}
                         className="w-[85%] h-[85%] object-contain"
                     />
                 </div>

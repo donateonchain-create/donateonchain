@@ -3,9 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {DonateOnChain} from "../src/DonateOnChain.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract DonateOnChainTest is Test {
     DonateOnChain public implementation;
@@ -26,12 +24,9 @@ contract DonateOnChainTest is Test {
     address public platformWallet = makeAddr("platformWallet");
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
-    bytes32 public constant COMPLIANCE_OFFICER_ROLE =
-        keccak256("COMPLIANCE_OFFICER_ROLE");
-    bytes32 public constant CAMPAIGN_MANAGER_ROLE =
-        keccak256("CAMPAIGN_MANAGER_ROLE");
-    bytes32 public constant TREASURY_ADMIN_ROLE =
-        keccak256("TREASURY_ADMIN_ROLE");
+    bytes32 public constant COMPLIANCE_OFFICER_ROLE = keccak256("COMPLIANCE_OFFICER_ROLE");
+    bytes32 public constant CAMPAIGN_MANAGER_ROLE = keccak256("CAMPAIGN_MANAGER_ROLE");
+    bytes32 public constant TREASURY_ADMIN_ROLE = keccak256("TREASURY_ADMIN_ROLE");
 
     function setUp() public {
         // Deploy implementation
@@ -52,10 +47,7 @@ contract DonateOnChainTest is Test {
             platformWallet
         );
 
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation),
-            initData
-        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         donateOnChain = DonateOnChain(payable(address(proxy)));
 
         // Grant roles
@@ -77,9 +69,7 @@ contract DonateOnChainTest is Test {
         assertEq(donateOnChain.treasuryThreshold(), 2);
         assertEq(donateOnChain.getTreasurySigners().length, 3);
         assertTrue(donateOnChain.hasRole(DEFAULT_ADMIN_ROLE, admin));
-        assertTrue(
-            donateOnChain.hasRole(COMPLIANCE_OFFICER_ROLE, complianceOfficer)
-        );
+        assertTrue(donateOnChain.hasRole(COMPLIANCE_OFFICER_ROLE, complianceOfficer));
     }
 
     function test_RevertWhen_InitializeTwice() public {
@@ -150,10 +140,7 @@ contract DonateOnChainTest is Test {
         assertEq(campaign.ngo, ngo);
         assertEq(campaign.designer, designer);
         assertEq(campaign.targetAmount, 10 ether);
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Pending_Vetting)
-        );
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Pending_Vetting));
     }
 
     function test_RevertWhen_CreateCampaignWithoutKYC() public {
@@ -202,10 +189,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.vetCampaign(0, true);
 
         DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(0);
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Active)
-        );
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Active));
     }
 
     function test_VetCampaignReject() public {
@@ -215,10 +199,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.vetCampaign(0, false);
 
         DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(0);
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Failed_Refundable)
-        );
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Failed_Refundable));
     }
 
     function test_RevertWhen_VetCampaignUnauthorized() public {
@@ -240,10 +221,7 @@ contract DonateOnChainTest is Test {
 
         // Donate
         vm.prank(donor);
-        uint256 nftId = donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        uint256 nftId = donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
 
         assertEq(nftId, 0);
 
@@ -259,18 +237,10 @@ contract DonateOnChainTest is Test {
 
         // Donate full amount
         vm.prank(donor);
-        donateOnChain.contribute{value: 10 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
-        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(
-            campaignId
-        );
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Goal_Reached)
-        );
+        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(campaignId);
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Goal_Reached));
     }
 
     function test_RevertWhen_ContributeWithoutKYC() public {
@@ -278,10 +248,7 @@ contract DonateOnChainTest is Test {
 
         vm.prank(donor);
         vm.expectRevert();
-        donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
     }
 
     function test_RevertWhen_ContributeToInactiveCampaign() public {
@@ -293,10 +260,7 @@ contract DonateOnChainTest is Test {
         // Campaign is still in Pending_Vetting state
         vm.prank(donor);
         vm.expectRevert();
-        donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
     }
 
     // ============ Pull-Over-Push Tests ============
@@ -309,10 +273,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 10 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
         // Check balances before claim
         uint256 ngoBalanceBefore = ngo.balance;
@@ -328,14 +289,9 @@ contract DonateOnChainTest is Test {
         assertEq(designer.balance, designerBalanceBefore + 2 ether); // 20%
         assertEq(platformWallet.balance, platformBalanceBefore + 1 ether); // 10%
 
-        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(
-            campaignId
-        );
+        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(campaignId);
         assertTrue(campaign.fundsClaimed);
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Closed)
-        );
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Closed));
     }
 
     function test_RevertWhen_ClaimFundsBeforeGoalReached() public {
@@ -345,10 +301,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
 
         // Try to claim with only 50% of goal
         vm.prank(ngo);
@@ -363,10 +316,7 @@ contract DonateOnChainTest is Test {
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 10 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
         vm.startPrank(ngo);
         donateOnChain.claimFunds(campaignId);
@@ -382,24 +332,16 @@ contract DonateOnChainTest is Test {
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
 
         // Fast forward past deadline
-        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(
-            campaignId
-        );
+        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(campaignId);
         vm.warp(campaign.deadline + 1);
 
         // Update campaign state
         donateOnChain.updateCampaignState(campaignId);
         campaign = donateOnChain.getCampaign(campaignId);
-        assertEq(
-            uint256(campaign.state),
-            uint256(DonateOnChain.CampaignState.Failed_Refundable)
-        );
+        assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Failed_Refundable));
 
         // Enable refunds (required before claiming)
         vm.prank(campaignManager);
@@ -448,18 +390,11 @@ contract DonateOnChainTest is Test {
 
         // Create proposal to update platform wallet
         address newPlatformWallet = makeAddr("newPlatformWallet");
-        bytes memory data = abi.encodeWithSelector(
-            DonateOnChain.updatePlatformWallet.selector,
-            newPlatformWallet
-        );
+        bytes memory data = abi.encodeWithSelector(DonateOnChain.updatePlatformWallet.selector, newPlatformWallet);
 
         vm.prank(signer1);
-        uint256 proposalId = donateOnChain.createTreasuryProposal(
-            address(donateOnChain),
-            0,
-            data,
-            "Update platform wallet"
-        );
+        uint256 proposalId =
+            donateOnChain.createTreasuryProposal(address(donateOnChain), 0, data, "Update platform wallet");
 
         // Approve with signer1 and signer2 (threshold = 2)
         vm.prank(signer1);
@@ -501,10 +436,7 @@ contract DonateOnChainTest is Test {
 
         vm.prank(donor);
         vm.expectRevert();
-        donateOnChain.contribute{value: 5 ether}(
-            campaignId,
-            "QmDonationMetadata"
-        );
+        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
     }
 
     function test_EmergencyWithdraw() public {
@@ -554,19 +486,18 @@ contract DonateOnChainTest is Test {
         donateOnChain.verifyAccount(ngo);
 
         vm.prank(ngo);
-        return
-            donateOnChain.createCampaign(
-                designer,
-                "Save the Whales",
-                "Help protect marine life",
-                "QmHash123",
-                bytes32(uint256(1)),
-                10 ether,
-                block.timestamp + 30 days,
-                7000,
-                2000,
-                1000
-            );
+        return donateOnChain.createCampaign(
+            designer,
+            "Save the Whales",
+            "Help protect marine life",
+            "QmHash123",
+            bytes32(uint256(1)),
+            10 ether,
+            block.timestamp + 30 days,
+            7000,
+            2000,
+            1000
+        );
     }
 
     function _createActiveCampaign() internal returns (uint256) {

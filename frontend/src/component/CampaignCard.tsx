@@ -22,45 +22,47 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     onClick
 }) => {
     return (
-        <div 
+        <div
             className={`bg-white rounded-3xl overflow-hidden hover:border hover:border-black/10 transition-colors cursor-pointer group ${className}`}
             onClick={onClick}
         >
-          
-            <div className="relative aspect-[4/3] overflow-hidden">
+
+            <div className="relative aspect-[4/3] overflow-hidden bg-gray-200">
                 <img
                     src={image}
                     alt={alt}
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.src = '/placeholder-campaign.svg' }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
             </div>
-            
-          
+
+
             <div className="p-4">
                 <h3 className="text-[20px] font-semibold leading-tight mb-3">
                     {title}
                 </h3>
-                
-               
+
+
                 <div className="relative h-12 rounded-full overflow-hidden bg-white border-2 border-gray-300">
-                  
-                    <div 
+
+                    <div
                         className="absolute inset-0 bg-[#4ADE80] rounded-full transition-all duration-500"
                         style={{ width: `${percentage}%` }}
                     >
-                       
+
                         <div className="absolute left-0 top-0 h-full flex items-center px-4 min-w-fit">
                             <span className="text-[16px] font-semibold text-black whitespace-nowrap">{amountRaised}</span>
                         </div>
                     </div>
-                    
-                  
+
+
                     <div className="absolute right-4 top-0 h-full flex items-center z-10">
                         <span className="text-[16px] font-semibold text-black">{percentage}%</span>
                     </div>
                 </div>
-                
-               
+
+
                 <div className="mt-2 text-right">
                     <span className="text-sm text-gray-600">Target: {target}</span>
                 </div>

@@ -3,9 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {DonateOnChain} from "../src/DonateOnChain.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title DeployDonateOnChain
@@ -36,19 +34,12 @@ contract DeployDonateOnChain is Script {
 
         // 2. Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
-            DonateOnChain.initialize.selector,
-            admin,
-            treasurySigners,
-            treasuryThreshold,
-            platformWallet
+            DonateOnChain.initialize.selector, admin, treasurySigners, treasuryThreshold, platformWallet
         );
 
         // 3. Deploy proxy
         console2.log("Deploying ERC1967Proxy...");
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation),
-            initData
-        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         console2.log("Proxy deployed at:", address(proxy));
 
         // 4. Wrap proxy in DonateOnChain interface
