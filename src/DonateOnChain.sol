@@ -44,7 +44,6 @@ contract DonateOnChain is
         Goal_Reached, // Target met, NGO can claim
         Failed_Refundable, // Deadline passed, donors can refund
         Closed // Funds claimed or refund period ended
-
     }
 
     // ============ Structs ============
