@@ -6,7 +6,7 @@ This backend service acts as a relayer to store file hashes on-chain without req
 
 1. Install dependencies:
 ```bash
-cd server
+cd services/relayer
 npm install
 ```
 
@@ -73,7 +73,7 @@ Health check endpoint.
 
 ## Frontend Configuration
 
-Set the environment variable in your frontend `.env` file:
+Set the environment variable in your web app `.env` file (`apps/web/.env`):
 
 ```bash
 VITE_RELAYER_API_URL=http://localhost:3001

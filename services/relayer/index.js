@@ -15,8 +15,8 @@ const __dirname = dirname(__filename);
 let FileManagerAbi, CONTRACTS, FILE_MANAGER_ADDRESS, account, client, publicClient;
 
 async function initialize() {
-  FileManagerAbi = JSON.parse(readFileSync(join(__dirname, '../frontend/src/contracts/FileManager.sol.abi.json'), 'utf-8'));
-  const contractsModule = await import('../frontend/src/contracts/addresses.js');
+  FileManagerAbi = JSON.parse(readFileSync(join(__dirname, '../../apps/web/src/contracts/FileManager.sol.abi.json'), 'utf-8'));
+  const contractsModule = await import('../../apps/web/src/contracts/addresses.js');
   CONTRACTS = contractsModule.default;
 
   const RELAYER_PRIVATE_KEY = process.env.RELAYER_PRIVATE_KEY;
