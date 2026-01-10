@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id        String     @id @default(cuid())
+  buyer     String
+  totalHBAR String
+  txHashes  String[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     OrderItem[]
+
+  @@index([buyer])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String   @id @default(cuid())
+  orderId        String
+  externalItemId String
+  quantity       Int
+  createdAt      DateTime @default(now())
+
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([externalItemId])
+}
+
+model Donation {
+  id          String   @id @default(cuid())
+  donorAddress String
+  campaignId   String
+  amount       String
+  itemId       String?
+  itemName     String?
+  date         String
+  txHash       String?
+  createdAt    DateTime @default(now())
+
+  @@index([donorAddress])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+model DesignIndex {
+  designId    String   @id
+  metadataCid String
+  previewCid  String?
+  designCid   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model KvDocument {
+  id         String   @id @default(cuid())
+  collection String
+  key        String
+  data       Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([collection, key])
+  @@index([collection])
+}

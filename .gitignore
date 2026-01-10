@@ -18,10 +18,11 @@ docs/
 .env.backup
 .env.old
 .env.example
+!services/api/.env.example
 
 # Node modules
 node_modules/
-frontend/node_modules/
+apps/web/node_modules/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
@@ -29,8 +30,8 @@ pnpm-lock.yaml
 # Build outputs
 dist/
 build/
-frontend/dist/
-frontend/build/
+apps/web/dist/
+apps/web/build/
 *.log
 
 # IDE

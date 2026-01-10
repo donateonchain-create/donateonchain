@@ -1,4 +1,4 @@
-const RELAYER_API_URL = import.meta.env.VITE_RELAYER_API_URL || 'http://localhost:3003';
+const RELAYER_API_URL = import.meta.env.VITE_RELAYER_API_URL || 'http://localhost:3001';
 
 export async function storeHashViaRelayer(cid: string, userAddress: string): Promise<{ transactionHash: string; fileHash: string }> {
   const response = await fetch(`${RELAYER_API_URL}/api/store-hash`, {
