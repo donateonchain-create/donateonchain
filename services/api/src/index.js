@@ -15,6 +15,174 @@ app.use(pinoHttp())
 
 const upload = multer({ storage: multer.memoryStorage() })
 
+function normalizeAddress(address) {
+  return String(address).toLowerCase()
+}
+
+function normalizeMirrorContractIdOrAddress(value) {
+  const v = String(value).trim()
+  if (v.startsWith('0x') || v.startsWith('0X')) return v.toLowerCase()
+  return v
+}
+
+function getMirrorConfig() {
+  const baseUrl = (process.env.MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com').replace(/\/$/, '')
+  const contractsRaw = process.env.MIRROR_CONTRACTS || ''
+  const contracts = contractsRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(normalizeMirrorContractIdOrAddress)
+
+  const pollIntervalMs = Number(process.env.MIRROR_POLL_INTERVAL_MS || 15000)
+  const startTimestamp = (process.env.MIRROR_START_TIMESTAMP || '').trim()
+
+  return { baseUrl, contracts, pollIntervalMs, startTimestamp }
+}
+
+function buildMirrorLogsUrl(baseUrl, contractIdOrAddress, cursor) {
+  const url = new URL(`${baseUrl}/api/v1/contracts/${contractIdOrAddress}/results/logs`)
+  url.searchParams.set('order', 'asc')
+  url.searchParams.set('limit', '100')
+  if (cursor?.nextTimestamp) {
+    url.searchParams.set('timestamp', `gte:${cursor.nextTimestamp}`)
+  }
+  return url.toString()
+}
+
+async function getOrInitMirrorCursor(contractIdOrAddress) {
+  const { startTimestamp } = getMirrorConfig()
+
+  const existing = await prisma.mirrorSyncCursor.findUnique({
+    where: { contractIdOrAddress },
+  })
+  if (existing) return existing
+
+  const initialTimestamp = startTimestamp && startTimestamp !== '' ? startTimestamp : '0.0'
+  return prisma.mirrorSyncCursor.create({
+    data: {
+      contractIdOrAddress,
+      nextTimestamp: initialTimestamp,
+      nextIndex: 0,
+    },
+  })
+}
+
+async function upsertMirrorCursor(contractIdOrAddress, nextTimestamp, nextIndex) {
+  return prisma.mirrorSyncCursor.upsert({
+    where: { contractIdOrAddress },
+    update: { nextTimestamp, nextIndex },
+    create: { contractIdOrAddress, nextTimestamp, nextIndex },
+  })
+}
+
+function computeNextCursor(current, log) {
+  const ts = String(log.timestamp)
+  const idx = Number(log.index)
+
+  if (!current || current.nextTimestamp !== ts) {
+    return { nextTimestamp: ts, nextIndex: idx + 1 }
+  }
+
+  if (idx >= Number(current.nextIndex)) {
+    return { nextTimestamp: ts, nextIndex: idx + 1 }
+  }
+
+  return current
+}
+
+async function syncMirrorContractOnce(contractIdOrAddress, reqLogger) {
+  const { baseUrl } = getMirrorConfig()
+
+  const cursor = await getOrInitMirrorCursor(contractIdOrAddress)
+  let nextCursor = { nextTimestamp: cursor.nextTimestamp, nextIndex: cursor.nextIndex }
+
+  let url = buildMirrorLogsUrl(baseUrl, contractIdOrAddress, cursor)
+  let fetched = 0
+  let stored = 0
+
+  while (url) {
+    const response = await fetch(url)
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`mirror_fetch_failed ${response.status} ${body}`)
+    }
+
+    const data = await response.json()
+    const logs = Array.isArray(data?.logs) ? data.logs : []
+    fetched += logs.length
+
+    for (const log of logs) {
+      const ts = String(log.timestamp)
+      const idx = Number(log.index)
+
+      if (ts === cursor.nextTimestamp && idx < Number(cursor.nextIndex)) {
+        continue
+      }
+
+      const topics = Array.isArray(log?.topics) ? log.topics.map(String) : []
+
+      try {
+        await prisma.mirrorContractLog.create({
+          data: {
+            contractIdOrAddress,
+            timestamp: ts,
+            index: idx,
+            transactionHash: log.transaction_hash ? String(log.transaction_hash) : null,
+            transactionIndex: log.transaction_index !== undefined ? Number(log.transaction_index) : null,
+            blockHash: log.block_hash ? String(log.block_hash) : null,
+            blockNumber: log.block_number !== undefined ? Number(log.block_number) : null,
+            rootContractId: log.root_contract_id ? String(log.root_contract_id) : null,
+            address: log.address ? String(log.address) : null,
+            bloom: log.bloom ? String(log.bloom) : null,
+            data: log.data ? String(log.data) : null,
+            topics,
+            raw: log,
+          },
+        })
+        stored += 1
+      } catch (e) {
+        if (e?.code !== 'P2002') throw e
+      }
+
+      nextCursor = computeNextCursor(nextCursor, log)
+    }
+
+    const nextPath = data?.links?.next
+    if (typeof nextPath === 'string' && nextPath.trim() !== '') {
+      url = nextPath.startsWith('http') ? nextPath : `${baseUrl}${nextPath}`
+    } else {
+      url = null
+    }
+  }
+
+  if (
+    nextCursor.nextTimestamp !== cursor.nextTimestamp ||
+    Number(nextCursor.nextIndex) !== Number(cursor.nextIndex)
+  ) {
+    await upsertMirrorCursor(contractIdOrAddress, nextCursor.nextTimestamp, nextCursor.nextIndex)
+  }
+
+  reqLogger?.info?.({ contractIdOrAddress, fetched, stored, cursor: nextCursor }, 'mirror_sync_complete')
+  return { contractIdOrAddress, fetched, stored, cursor: nextCursor }
+}
+
+let mirrorSyncRunning = false
+async function runMirrorSyncCycle() {
+  const { contracts } = getMirrorConfig()
+  if (!contracts.length) return
+  if (mirrorSyncRunning) return
+  mirrorSyncRunning = true
+
+  try {
+    for (const contractIdOrAddress of contracts) {
+      await syncMirrorContractOnce(contractIdOrAddress)
+    }
+  } finally {
+    mirrorSyncRunning = false
+  }
+}
+
 app.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`
@@ -23,6 +191,70 @@ app.get('/health', async (req, res) => {
     req.log?.error(e, 'healthcheck_failed')
     res.status(503).json({ status: 'db_unavailable' })
   }
+})
+
+const MirrorQuerySchema = z.object({
+  contractIdOrAddress: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  timestampGte: z.string().min(1).optional(),
+  timestampLte: z.string().min(1).optional(),
+})
+
+app.get('/api/mirror/status', async (req, res) => {
+  const { baseUrl, contracts, pollIntervalMs } = getMirrorConfig()
+
+  const cursors = await prisma.mirrorSyncCursor.findMany({
+    where: contracts.length ? { contractIdOrAddress: { in: contracts } } : undefined,
+    orderBy: { contractIdOrAddress: 'asc' },
+  })
+
+  res.json({ baseUrl, pollIntervalMs, contracts, cursors })
+})
+
+app.get('/api/mirror/logs', async (req, res) => {
+  const parsed = MirrorQuerySchema.safeParse(req.query)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const q = parsed.data
+  const contractIdOrAddress = q.contractIdOrAddress
+    ? normalizeMirrorContractIdOrAddress(q.contractIdOrAddress)
+    : undefined
+
+  const where = {
+    ...(contractIdOrAddress ? { contractIdOrAddress } : {}),
+    ...(q.timestampGte || q.timestampLte
+      ? {
+          timestamp: {
+            ...(q.timestampGte ? { gte: q.timestampGte } : {}),
+            ...(q.timestampLte ? { lte: q.timestampLte } : {}),
+          },
+        }
+      : {}),
+  }
+
+  const logs = await prisma.mirrorContractLog.findMany({
+    where,
+    orderBy: [{ timestamp: 'desc' }, { index: 'desc' }],
+    take: q.limit ?? 50,
+  })
+
+  res.json(logs)
+})
+
+app.post('/api/mirror/sync', async (req, res) => {
+  const apiKey = process.env.MIRROR_ADMIN_API_KEY
+  if (apiKey && req.get('x-api-key') !== apiKey) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const { contracts } = getMirrorConfig()
+  const results = []
+  for (const contractIdOrAddress of contracts) {
+    results.push(await syncMirrorContractOnce(contractIdOrAddress, req.log))
+  }
+  res.json({ ok: true, results })
 })
 
 const AddressSchema = z.string().min(3)
@@ -127,6 +359,143 @@ app.get('/api/donations', async (req, res) => {
   })
 
   res.json(donations)
+})
+
+const CreateKycVerificationSchema = z.object({
+  walletAddress: AddressSchema,
+  provider: z.string().min(1).optional(),
+  metadata: z.any().optional(),
+})
+
+app.post('/api/kyc/verifications', async (req, res) => {
+  const parsed = CreateKycVerificationSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const provider = (parsed.data.provider || process.env.KYC_PROVIDER || 'mock').trim()
+
+  const created = await prisma.kycVerification.create({
+    data: {
+      walletAddress: normalizeAddress(parsed.data.walletAddress),
+      provider,
+      providerRef: provider === 'mock' ? `mock_${Date.now()}_${Math.random().toString(16).slice(2)}` : null,
+      status: 'pending',
+      metadata: parsed.data.metadata ?? null,
+    },
+  })
+
+  res.status(201).json(created)
+})
+
+app.get('/api/kyc/verifications', async (req, res) => {
+  const walletAddress = typeof req.query.walletAddress === 'string' ? req.query.walletAddress : undefined
+
+  const where = {
+    ...(walletAddress ? { walletAddress: normalizeAddress(walletAddress) } : {}),
+  }
+
+  const verifications = await prisma.kycVerification.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  })
+
+  res.json(verifications)
+})
+
+app.get('/api/kyc/verifications/:id', async (req, res) => {
+  const id = req.params.id
+  const record = await prisma.kycVerification.findUnique({ where: { id } })
+  if (!record) return res.status(404).json({ error: 'Not found' })
+  res.json(record)
+})
+
+const MockKycDecisionSchema = z.object({
+  status: z.enum(['in_review', 'approved', 'rejected', 'expired']),
+})
+
+app.post('/api/kyc/mock/:id/decision', async (req, res) => {
+  const id = req.params.id
+  const parsed = MockKycDecisionSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const apiKey = process.env.KYC_ADMIN_API_KEY
+  if (apiKey && req.get('x-api-key') !== apiKey) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const record = await prisma.kycVerification.findUnique({ where: { id } })
+  if (!record) return res.status(404).json({ error: 'Not found' })
+  if (record.provider !== 'mock') return res.status(400).json({ error: 'Not a mock verification' })
+
+  const nextStatus = parsed.data.status
+  const updated = await prisma.kycVerification.update({
+    where: { id },
+    data: {
+      status: nextStatus,
+      completedAt: nextStatus === 'approved' || nextStatus === 'rejected' || nextStatus === 'expired' ? new Date() : null,
+    },
+  })
+
+  res.json(updated)
+})
+
+const KycWebhookSchema = z.object({
+  eventId: z.string().optional(),
+  verificationId: z.string().optional(),
+  providerRef: z.string().optional(),
+  status: z.enum(['pending', 'in_review', 'approved', 'rejected', 'expired']).optional(),
+  payload: z.any().optional(),
+})
+
+app.post('/api/kyc/webhook/:provider', async (req, res) => {
+  const provider = req.params.provider
+  const secret = process.env.KYC_WEBHOOK_SECRET
+  if (secret && req.get('x-webhook-secret') !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const parsed = KycWebhookSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  try {
+    const eventId = parsed.data.eventId
+    const verificationId = parsed.data.verificationId
+
+    const stored = await prisma.kycWebhookEvent.create({
+      data: {
+        provider,
+        eventId: eventId ?? null,
+        verificationId: verificationId ?? null,
+        payload: parsed.data.payload ?? req.body,
+      },
+    })
+
+    if (verificationId && parsed.data.status) {
+      await prisma.kycVerification.update({
+        where: { id: verificationId },
+        data: {
+          status: parsed.data.status,
+          completedAt:
+            parsed.data.status === 'approved' || parsed.data.status === 'rejected' || parsed.data.status === 'expired'
+              ? new Date()
+              : null,
+        },
+      })
+    }
+
+    res.json({ ok: true, id: stored.id })
+  } catch (e) {
+    if (e?.code === 'P2002') {
+      return res.json({ ok: true, duplicate: true })
+    }
+    req.log?.error(e, 'kyc_webhook_failed')
+    res.status(500).json({ error: 'kyc_webhook_failed' })
+  }
 })
 
 const DesignIndexUpsertSchema = z.object({
@@ -340,4 +709,14 @@ const PORT = Number(process.env.PORT || 3002)
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[backend] listening on :${PORT}`)
+
+  const { contracts, pollIntervalMs } = getMirrorConfig()
+  if (contracts.length) {
+    setTimeout(() => {
+      runMirrorSyncCycle().catch((e) => console.error('[mirror] sync cycle failed', e))
+      setInterval(() => {
+        runMirrorSyncCycle().catch((e) => console.error('[mirror] sync cycle failed', e))
+      }, pollIntervalMs)
+    }, 1000)
+  }
 })

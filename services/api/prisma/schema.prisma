@@ -70,3 +70,70 @@ model KvDocument {
   @@unique([collection, key])
   @@index([collection])
 }
+
+enum KycStatus {
+  pending
+  in_review
+  approved
+  rejected
+  expired
+}
+
+model KycVerification {
+  id            String    @id @default(cuid())
+  walletAddress String
+  provider      String
+  providerRef   String?
+  status        KycStatus @default(pending)
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  @@index([walletAddress])
+  @@index([provider])
+  @@index([status])
+}
+
+model KycWebhookEvent {
+  id            String   @id @default(cuid())
+  provider      String
+  eventId       String?
+  verificationId String?
+  payload       Json
+  receivedAt    DateTime @default(now())
+
+  @@index([provider])
+  @@index([verificationId])
+  @@unique([provider, eventId])
+}
+
+model MirrorSyncCursor {
+  id                String   @id @default(cuid())
+  contractIdOrAddress String @unique
+  nextTimestamp      String
+  nextIndex          Int
+  updatedAt          DateTime @updatedAt
+}
+
+model MirrorContractLog {
+  id                  String   @id @default(cuid())
+  contractIdOrAddress String
+  timestamp           String
+  index               Int
+  transactionHash     String?
+  transactionIndex    Int?
+  blockHash           String?
+  blockNumber         Int?
+  rootContractId      String?
+  address             String?
+  bloom               String?
+  data                String?
+  topics              String[]
+  raw                 Json
+  createdAt           DateTime @default(now())
+
+  @@unique([contractIdOrAddress, timestamp, index])
+  @@index([contractIdOrAddress])
+  @@index([timestamp])
+}
