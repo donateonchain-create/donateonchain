@@ -9,8 +9,8 @@
     "build:netlify": "npm ci --legacy-peer-deps && npm run build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "relayer": "node server/index.js",
-    "relayer:dev": "node --watch server/index.js"
+    "relayer": "npm --prefix ../../services/relayer run start",
+    "relayer:dev": "npm --prefix ../../services/relayer run dev"
   },
   "dependencies": {
     "@hashgraph/hedera-wallet-connect": "^2.0.3",

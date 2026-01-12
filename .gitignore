@@ -20,10 +20,11 @@ docs/
 .env.example
 # NOTE: .env.1password is safe to commit - it only contains secret references, not actual values
 !.env.1password
+!services/api/.env.example
 
 # Node modules
 node_modules/
-frontend/node_modules/
+apps/web/node_modules/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
@@ -31,8 +32,8 @@ pnpm-lock.yaml
 # Build outputs
 dist/
 build/
-frontend/dist/
-frontend/build/
+apps/web/dist/
+apps/web/build/
 *.log
 
 # IDE
@@ -68,4 +69,5 @@ Vulnerability_Response.md
 notes.md
 presentation_notes.md
 ROLES_AND_SCALABILITY.md
+architecture.md
 todo/
