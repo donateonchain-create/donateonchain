@@ -44,13 +44,16 @@ DonateOnChain/
 │   ├── DonateOnChain.sol        # Main UUPS upgradeable contract
 │   ├── Errors.sol               # Custom error definitions
 │   └── interfaces/              # Contract interfaces
-├── frontend/                     # Web application (React + TypeScript)
-│   ├── src/
-│   │   ├── components/          # React components
-│   │   ├── config/              # Wallet & network configuration
-│   │   ├── utils/               # Helper functions
-│   │   └── lib/                 # HashPack integration
-│   └── server/                  # Backend relayer service
+├── apps/
+│   └── web/                      # Web application (React + TypeScript)
+│       ├── src/
+│       │   ├── component/        # React components
+│       │   ├── config/           # Wallet & network configuration
+│       │   ├── utils/            # Helper functions
+│       │   └── contracts/        # Contract addresses + ABIs
+├── services/
+│   ├── api/                      # Backend API service (Express + Prisma + Postgres)
+│   └── relayer/                  # Backend relayer service
 ├── script/                       # Deployment scripts
 └── test/                         # Smart contract tests
 ```
@@ -74,17 +77,20 @@ cd donateonchain
 # Install smart contract dependencies
 forge install
 
-# Install frontend dependencies
-cd frontend
+# Install web app dependencies
+cd apps/web
 npm install
 cd ..
 
-# Copy environment files
-cp .env.example .env
-cp frontend/.env.example frontend/.env
+# Install relayer dependencies
+cd services/relayer
+npm install
+cd ../..
 
-# Configure your environment variables
-# Edit .env and frontend/.env with your settings
+# Install API dependencies
+cd services/api
+npm install
+cd ../..
 ```
 
 ### Running Locally
@@ -92,7 +98,21 @@ cp frontend/.env.example frontend/.env
 #### Frontend Development Server
 
 ```bash
-cd frontend
+cd apps/web
+npm run dev
+```
+
+#### Relayer Service
+
+```bash
+cd services/relayer
+npm run dev
+```
+
+#### API Service
+
+```bash
+cd services/api
 npm run dev
 ```
 
@@ -179,7 +199,7 @@ RPC_URL=https://testnet.hashio.io/api
 PRIVATE_KEY=your_private_key
 ```
 
-### Frontend Environment (`frontend/.env`)
+### Web App Environment (`apps/web/.env`)
 
 ```bash
 # Hedera Network
@@ -235,7 +255,7 @@ forge test --gas-report
 ### Frontend Tests
 
 ```bash
-cd frontend
+cd apps/web
 
 # Run linter
 npm run lint

@@ -1,26 +1,47 @@
-import { db, storage } from '../config/firebaseConfig'
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  deleteDoc,
-  updateDoc 
-} from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getCampaignMetadataCid } from '../onchain/adapter'
-import { unpinCID } from './ipfs'
+import { unpinCID, uploadFileToIPFS } from './ipfs'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
+
+async function apiJson(path: string, init?: RequestInit) {
+  const res = await fetch(`${API_URL}${path}`, init)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `Request failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+async function kvSet(collectionName: string, key: string, data: any) {
+  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data }),
+  })
+}
+
+async function kvGet(collectionName: string, key: string) {
+  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
+    method: 'GET',
+  })
+}
+
+async function kvList(collectionName: string) {
+  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}`, { method: 'GET' })
+}
+
+async function kvDelete(collectionName: string, key: string) {
+  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
+}
 
 //function to save data to Firestore
 export const saveToFirebase = async (collectionName: string, documentId: string, data: any) => {
   try {
-    const docRef = doc(db, collectionName, documentId)
     const dataToSave = {
       ...data,
       updatedAt: new Date().toISOString()
     };
-    await setDoc(docRef, dataToSave);
+    await kvSet(collectionName, documentId, dataToSave)
     return true
   } catch (error) {
     console.error(`Error saving to ${collectionName}:`, error)
@@ -31,12 +52,8 @@ export const saveToFirebase = async (collectionName: string, documentId: string,
 //  function to get data from Firestore
 export const getFromFirebase = async (collectionName: string, documentId: string) => {
   try {
-    const docRef = doc(db, collectionName, documentId)
-    const docSnap = await getDoc(docRef)
-    if (docSnap.exists()) {
-      return docSnap.data()
-    }
-    return null
+    const result = await kvGet(collectionName, documentId)
+    return result?.data ?? null
   } catch (error) {
     console.error(`Error getting from ${collectionName}:`, error)
     return null
@@ -46,10 +63,10 @@ export const getFromFirebase = async (collectionName: string, documentId: string
 //  function to get all documents from a collection
 export const getAllFromFirebase = async (collectionName: string) => {
   try {
-    const querySnapshot = await getDocs(collection(db, collectionName))
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
+    const rows = await kvList(collectionName)
+    return (rows || []).map((r: any) => ({
+      id: r.key,
+      ...(r.data || {}),
     }))
   } catch (error) {
     console.error(`Error getting all from ${collectionName}:`, error)
@@ -60,10 +77,11 @@ export const getAllFromFirebase = async (collectionName: string) => {
 //   function to update data in Firestore
 export const updateFirebase = async (collectionName: string, documentId: string, data: any) => {
   try {
-    const docRef = doc(db, collectionName, documentId)
-    await updateDoc(docRef, {
+    const existing = await getFromFirebase(collectionName, documentId)
+    await kvSet(collectionName, documentId, {
+      ...(existing || {}),
       ...data,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     })
     return true
   } catch (error) {
@@ -75,8 +93,7 @@ export const updateFirebase = async (collectionName: string, documentId: string,
 //   function to delete data from Firestore
 export const deleteFromFirebase = async (collectionName: string, documentId: string) => {
   try {
-    const docRef = doc(db, collectionName, documentId)
-    await deleteDoc(docRef)
+    await kvDelete(collectionName, documentId)
     return true
   } catch (error) {
     console.error(`Error deleting from ${collectionName}:`, error)
@@ -270,23 +287,31 @@ const base64ToBlob = (base64: string): Blob => {
   return new Blob([ab], { type: mimeString })
 }
 
-// Upload image to Firebase Storage
+async function uploadBlobToIPFS(blob: Blob, fileName: string): Promise<string | null> {
+  try {
+    const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' })
+    const cid = await uploadFileToIPFS(file)
+    if (!cid) return null
+    return `https://gateway.pinata.cloud/ipfs/${cid}`
+  } catch (e) {
+    console.error('Error uploading blob to IPFS:', e)
+    return null
+  }
+}
+
+// Upload image to IPFS (via backend)
 export const uploadImageToFirebase = async (walletAddress: string, imageType: 'banner' | 'profile', base64Image: string): Promise<string | null> => {
   try {
     const blob = base64ToBlob(base64Image)
-    const fileName = `${walletAddress.toLowerCase()}/${imageType}_${Date.now()}.jpg`
-    const storageRef = ref(storage, `profileImages/${fileName}`)
-    
-    await uploadBytes(storageRef, blob)
-    const downloadURL = await getDownloadURL(storageRef)
-    return downloadURL
+    const fileName = `${walletAddress.toLowerCase()}_${imageType}_${Date.now()}.jpg`
+    return await uploadBlobToIPFS(blob, fileName)
   } catch (error) {
     console.error(`Error uploading ${imageType} image:`, error)
     return null
   }
 }
 
-// Upload design image to Firebase Storage
+// Upload design image to IPFS (via backend)
 export const uploadDesignImageToFirebase = async (designId: string, imageType: 'front' | 'back', imageDataUrl: string): Promise<string | null> => {
   try {
     
@@ -316,12 +341,8 @@ export const uploadDesignImageToFirebase = async (designId: string, imageType: '
     }
     
    
-    const fileName = `${designId}/${imageType}.png`
-    const storageRef = ref(storage, `designImages/${fileName}`)
-    
-    await uploadBytes(storageRef, blob)
-    const downloadURL = await getDownloadURL(storageRef)
-    return downloadURL
+    const fileName = `${designId}_${imageType}.png`
+    return await uploadBlobToIPFS(blob, fileName)
   } catch (error) {
     console.error(`Error uploading design ${imageType} image:`, error)
     return null
@@ -461,7 +482,6 @@ export const deleteNgoApplication = async (walletAddress: string) => {
 export const updateNgoApplicationStatus = async (walletAddress: string, status: 'approved' | 'rejected', reason: string, approvalTransactionHash?: string) => {
   try {
     const docId = walletAddress.toLowerCase();
-    const docRef = doc(db, 'ngoApplications', docId);
     const updateData: any = {
       status: status,
       rejectionReason: reason,
@@ -470,7 +490,7 @@ export const updateNgoApplicationStatus = async (walletAddress: string, status: 
     if (approvalTransactionHash) {
       updateData.approvalTransactionHash = approvalTransactionHash;
     }
-    await updateDoc(docRef, updateData);
+    await updateFirebase('ngoApplications', docId, updateData)
     return true
   } catch (error) {
     console.error('Error updating NGO application status:', error)
@@ -481,8 +501,7 @@ export const updateNgoApplicationStatus = async (walletAddress: string, status: 
 export const saveDesignerApplication = async (designerData: any) => {
   try {
     const docId = designerData.walletAddress.toLowerCase();
-    const docRef = doc(db, 'designerApplications', docId);
-    await setDoc(docRef, designerData);
+    await saveToFirebase('designerApplications', docId, designerData)
     return true
   } catch (error) {
     console.error('Error saving designer application:', error)
@@ -493,12 +512,9 @@ export const saveDesignerApplication = async (designerData: any) => {
 export const getDesignerApplicationByWallet = async (walletAddress: string) => {
   try {
     const docId = walletAddress.toLowerCase();
-    const docRef = doc(db, 'designerApplications', docId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() };
-    }
-    return null
+    const result = await getFromFirebase('designerApplications', docId)
+    if (!result) return null
+    return { id: docId, ...result }
   } catch (error) {
     console.error('Error getting designer application:', error)
     return null
@@ -508,8 +524,7 @@ export const getDesignerApplicationByWallet = async (walletAddress: string) => {
 export const deleteDesignerApplication = async (walletAddress: string) => {
   try {
     const docId = walletAddress.toLowerCase();
-    const docRef = doc(db, 'designerApplications', docId);
-    await deleteDoc(docRef);
+    await deleteFromFirebase('designerApplications', docId)
     return true
   } catch (error) {
     console.error('Error deleting designer application:', error)
@@ -520,7 +535,6 @@ export const deleteDesignerApplication = async (walletAddress: string) => {
 export const updateDesignerApplicationStatus = async (walletAddress: string, status: 'approved' | 'rejected', reason: string, approvalTransactionHash?: string) => {
   try {
     const docId = walletAddress.toLowerCase();
-    const docRef = doc(db, 'designerApplications', docId);
     const updateData: any = {
       status: status,
       rejectionReason: reason,
@@ -529,7 +543,7 @@ export const updateDesignerApplicationStatus = async (walletAddress: string, sta
     if (approvalTransactionHash) {
       updateData.approvalTransactionHash = approvalTransactionHash;
     }
-    await updateDoc(docRef, updateData);
+    await updateFirebase('designerApplications', docId, updateData)
     return true
   } catch (error) {
     console.error('Error updating designer application status:', error)
@@ -539,11 +553,7 @@ export const updateDesignerApplicationStatus = async (walletAddress: string, sta
 
 export const getDesignerApplications = async () => {
   try {
-    const querySnapshot = await getDocs(collection(db, 'designerApplications'))
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
+    return await getAllFromFirebase('designerApplications')
   } catch (error) {
     console.error('Error getting all designer applications:', error)
     return null
@@ -552,8 +562,7 @@ export const getDesignerApplications = async () => {
 
 export const saveAdminList = async (adminAddresses: string[]) => {
   try {
-    const docRef = doc(db, 'systemData', 'adminList');
-    await setDoc(docRef, {
+    await saveToFirebase('systemData', 'adminList', {
       admins: adminAddresses,
       updatedAt: new Date().toISOString()
     });
@@ -566,12 +575,8 @@ export const saveAdminList = async (adminAddresses: string[]) => {
 
 export const getAdminList = async () => {
   try {
-    const docRef = doc(db, 'systemData', 'adminList');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data().admins || [];
-    }
-    return []
+    const data: any = await getFromFirebase('systemData', 'adminList')
+    return data?.admins || []
   } catch (error) {
     console.error('Error getting admin list:', error)
     return []
@@ -581,13 +586,11 @@ export const getAdminList = async () => {
 export const uploadFileToFirebase = async (walletAddress: string, file: File, folder: string): Promise<string | null> => {
   try {
     console.log(`Uploading file ${file.name} to ${folder} for ${walletAddress}`)
-    const fileName = `${walletAddress.toLowerCase()}/${folder}_${Date.now()}_${file.name}`
-    const storageRef = ref(storage, `ngoDocuments/${fileName}`)
-    
-    await uploadBytes(storageRef, file)
-    const downloadURL = await getDownloadURL(storageRef)
-    console.log(`File uploaded successfully: ${downloadURL}`)
-    return downloadURL
+    const cid = await uploadFileToIPFS(file)
+    if (!cid) return null
+    const url = `https://gateway.pinata.cloud/ipfs/${cid}`
+    console.log(`File uploaded successfully: ${url}`)
+    return url
   } catch (error) {
     console.error(`Error uploading file:`, error)
     return null
@@ -651,9 +654,6 @@ export const uploadCampaignImageToFirebase = async () => {
 
 export const deleteCampaignStorageAssets = async (campaignId: number | string) => {
   try {
-    const path = `campaignImages/${campaignId}/cover.png`
-    const storageRef = ref(storage, path)
-    await deleteObject(storageRef)
     return true
   } catch (e) {
     console.warn('No campaign storage assets or failed to delete for', campaignId)

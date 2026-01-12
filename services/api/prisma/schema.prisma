@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id        String     @id @default(cuid())
+  buyer     String
+  totalHBAR String
+  txHashes  String[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     OrderItem[]
+
+  @@index([buyer])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String   @id @default(cuid())
+  orderId        String
+  externalItemId String
+  quantity       Int
+  createdAt      DateTime @default(now())
+
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([externalItemId])
+}
+
+model Donation {
+  id          String   @id @default(cuid())
+  donorAddress String
+  campaignId   String
+  amount       String
+  itemId       String?
+  itemName     String?
+  date         String
+  txHash       String?
+  createdAt    DateTime @default(now())
+
+  @@index([donorAddress])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+model DesignIndex {
+  designId    String   @id
+  metadataCid String
+  previewCid  String?
+  designCid   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model KvDocument {
+  id         String   @id @default(cuid())
+  collection String
+  key        String
+  data       Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([collection, key])
+  @@index([collection])
+}
+
+enum KycStatus {
+  pending
+  in_review
+  approved
+  rejected
+  expired
+}
+
+model KycVerification {
+  id            String    @id @default(cuid())
+  walletAddress String
+  provider      String
+  providerRef   String?
+  status        KycStatus @default(pending)
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  @@index([walletAddress])
+  @@index([provider])
+  @@index([status])
+}
+
+model KycWebhookEvent {
+  id            String   @id @default(cuid())
+  provider      String
+  eventId       String?
+  verificationId String?
+  payload       Json
+  receivedAt    DateTime @default(now())
+
+  @@index([provider])
+  @@index([verificationId])
+  @@unique([provider, eventId])
+}
+
+model MirrorSyncCursor {
+  id                String   @id @default(cuid())
+  contractIdOrAddress String @unique
+  nextTimestamp      String
+  nextIndex          Int
+  updatedAt          DateTime @updatedAt
+}
+
+model MirrorContractLog {
+  id                  String   @id @default(cuid())
+  contractIdOrAddress String
+  timestamp           String
+  index               Int
+  transactionHash     String?
+  transactionIndex    Int?
+  blockHash           String?
+  blockNumber         Int?
+  rootContractId      String?
+  address             String?
+  bloom               String?
+  data                String?
+  topics              String[]
+  raw                 Json
+  createdAt           DateTime @default(now())
+
+  @@unique([contractIdOrAddress, timestamp, index])
+  @@index([contractIdOrAddress])
+  @@index([timestamp])
+}
