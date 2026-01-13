@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
-import { reownAppKit, hederaTestnet } from '../config/reownConfig'
+import { useAppKit } from '@reown/appkit/react'
+import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { Upload, CheckCircle, Clock, X, ChevronDown } from 'lucide-react'
@@ -15,6 +16,7 @@ const BecomeaDesigner = () => {
     const navigate = useNavigate()
     const { address, isConnected } = useAccount()
     const chainId = useChainId()
+    const { open } = useAppKit()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
     const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [existingDesignerData, setExistingDesignerData] = useState<any>(null)
@@ -128,7 +130,7 @@ const BecomeaDesigner = () => {
     }
 
     const handleOpenWallet = async () => {
-        await reownAppKit.open()
+        open({ view: 'Connect' })
     }
 
     const isSection1Valid = () => {
