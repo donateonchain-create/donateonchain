@@ -7,7 +7,7 @@ import Button from "../component/Button"
 import { useCart } from '../context/CartContext'
 import { products } from '../data/databank'
 import { useAccount } from 'wagmi'
-import { reownAppKit } from '../config/reownConfig'
+import { useAppKit } from '@reown/appkit/react'
 import { saveDonation, getAllGlobalDesigns, saveOrder } from '../utils/firebaseStorage'
 import { getDesignPrice, batchPurchaseDesignsPayable } from '../onchain/adapter'
 
@@ -15,6 +15,7 @@ const Checkout = () => {
     const navigate = useNavigate()
     const { cartItems, clearCart, removeItem } = useCart()
     const { isConnected, address, connector } = useAccount()
+    const { open } = useAppKit()
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [showConnectWalletModal, setShowConnectWalletModal] = useState(false)
@@ -116,7 +117,7 @@ const Checkout = () => {
         }
     }, [isConnected, formData.paymentMethod])
 
-    const handleConnectWallet = async () => { setShowConnectWalletModal(false); await reownAppKit.open() }
+    const handleConnectWallet = async () => { setShowConnectWalletModal(false); open({ view: 'Connect' }) }
 
     const handleCheckout = async () => {
         if (!isFormValid()) return

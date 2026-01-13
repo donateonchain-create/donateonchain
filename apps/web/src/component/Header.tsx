@@ -8,6 +8,7 @@ import { addresses, abis } from '../onchain/contracts'
 import { read as readOnchain } from '../onchain/client'
 import { products, campaigns, causes, creators } from '../data/databank'
 import { reownAppKit } from '../config/reownConfig'
+import { useAppKit } from '@reown/appkit/react'
 import { useAccount, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
 import { hederaTestnet } from '../config/reownConfig'
 import { getUserRoles } from '../onchain/adapter'
@@ -58,9 +59,11 @@ const Header = () => {
         navigate('/shop')
     }
 
+    const { open } = useAppKit()
+
     const handleConnect = async () => {
-        await reownAppKit.open() 
-      }
+        open({ view: 'Connect' })
+    }
 
     const handleSearch = (query: string) => {
         setSearchQuery(query)
