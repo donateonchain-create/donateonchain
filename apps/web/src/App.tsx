@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import Home from './pages/Home'
@@ -17,14 +17,21 @@ import BecomeanNgo from './pages/BecomeanNgo'
 import BecomeaDesigner from './pages/BecomeaDesigner'
 import AdminPage from './pages/Admin'
 import Header from './component/Header'
+import Waitlist from './pages/Waitlist'
 import ProfileSetupModal from './component/ProfileSetupModal'
 import PrivateRoute from './component/PrivateRoute'
 import { getUserProfile, getNgoProfile } from './utils/firebaseStorage'
 
-const App = () => {
+const AppContent = () => {
+    const location = useLocation()
     const { isConnected, address } = useAccount()
     const [showProfileSetup, setShowProfileSetup] = useState(false)
     const [existingProfile, setExistingProfile] = useState<any>(null)
+    const isWaitlistPage = location.pathname === '/waitlist'
+
+    useEffect(() => {
+        console.log('App component rendered')
+    }, [])
 
     useEffect(() => {
         const checkProfileExists = async () => {
@@ -109,12 +116,11 @@ const App = () => {
     }
 
     return (
-        <CartProvider>
-            <Router>
-                <Header />
-                <ScrollToTop />
-                <ProfileSetupModal isOpen={showProfileSetup} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
-                <Routes>
+        <>
+            {!isWaitlistPage && <Header />}
+            <ScrollToTop />
+            <ProfileSetupModal isOpen={showProfileSetup} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
+            <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/shop" element={<Shop />} />
                     <Route path="/product/:id" element={<ProductPage />} />
@@ -128,7 +134,17 @@ const App = () => {
                     <Route path="/become-an-ngo" element={<BecomeanNgo />} />
                     <Route path="/become-a-designer" element={<BecomeaDesigner />} />
                     <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
-                </Routes>
+                <Route path="/waitlist" element={<Waitlist />} />
+            </Routes>
+        </>
+    )
+}
+
+const App = () => {
+    return (
+        <CartProvider>
+            <Router>
+                <AppContent />
             </Router>
         </CartProvider>
     )
