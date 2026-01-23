@@ -7,6 +7,9 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:reset": "prisma migrate reset --force",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio"
   },
@@ -19,9 +22,7 @@
     "multer": "^1.4.5-lts.2",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
+    "prisma": "^6.1.0",
     "zod": "^3.24.1"
-  },
-  "devDependencies": {
-    "prisma": "^6.1.0"
   }
 }
