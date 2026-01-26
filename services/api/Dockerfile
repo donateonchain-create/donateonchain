@@ -2,10 +2,8 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
-RUN npm install -g npm@9
-
 COPY package.json package-lock.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY prisma ./prisma
 RUN npx prisma generate
