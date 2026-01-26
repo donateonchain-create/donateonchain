@@ -3,18 +3,21 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+
+WORKDIR /app/services/api
+COPY services/api/package.json services/api/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY prisma ./prisma
+COPY services/api/prisma ./prisma
 RUN npx prisma generate
 
-COPY src ./src
+COPY services/api/src ./src
 
 # ---------- Runtime ----------
 FROM node:20-bookworm-slim
-WORKDIR /app
+WORKDIR /app/services/api
 
-COPY --from=builder /app /app
+COPY --from=builder /app/services/api /app/services/api
 
 ENV NODE_ENV=production
 EXPOSE 3002
