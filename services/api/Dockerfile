@@ -2,6 +2,9 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
+# 🔧 Fix npm 10 bug by downgrading npm
+RUN npm install -g npm@9
+
 # Install dependencies first (better layer caching)
 COPY package.json package-lock.json ./
 RUN npm install --omit=dev
