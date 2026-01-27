@@ -25,7 +25,6 @@ docs/
 # Node modules
 node_modules/
 apps/web/node_modules/
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
