@@ -35,11 +35,11 @@ jobs:
         run: forge install
 
       - name: Run coverage
-        run: forge coverage --report lcov
+        run: forge coverage --report lcov --ir-minimum
 
       - name: Generate coverage report
         run: |
-          forge coverage --report summary > coverage.txt
+          forge coverage --report summary --ir-minimum > coverage.txt
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           cat coverage.txt >> $GITHUB_STEP_SUMMARY
