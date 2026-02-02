@@ -19,7 +19,7 @@ async function getOpenPRs(owner, repoName, token) {
   
   const response = await fetch(url, {
     headers: {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.github.v3+json',
     },
   });
@@ -36,7 +36,7 @@ async function getWorkflowRunsForPR(owner, repoName, token, headSha) {
   
   const response = await fetch(url, {
     headers: {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.github.v3+json',
     },
   });
@@ -54,7 +54,7 @@ async function getCombinedStatus(owner, repoName, token, headSha) {
   
   const response = await fetch(url, {
     headers: {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.github.v3+json',
     },
   });
@@ -95,12 +95,12 @@ async function closePR(owner, repoName, token, prNumber, reason) {
   await fetch(commentUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Accept': 'application/vnd.github.v3+json',
     },
     body: JSON.stringify({
-      body: `🤖 This pull request is being automatically closed because it has failed CI checks.\n\n${reason}\n\nIf you believe this was done in error, please reopen the PR and investigate the failures.`,
+      body: `🤖 This pull request is being automatically closed by the \`.github/scripts/close-failed-prs.js\` script because it has failed CI checks.\n\n${reason}\n\nIf you believe this was done in error, please:\n1. Review the failed checks and fix any issues\n2. Reopen the PR\n3. See [PR_FAILURE_ANALYSIS.md](.github/PR_FAILURE_ANALYSIS.md) for more information\n\nTo prevent this automation in the future, contact the repository maintainers.`,
     }),
   });
   
@@ -109,7 +109,7 @@ async function closePR(owner, repoName, token, prNumber, reason) {
   const response = await fetch(url, {
     method: 'PATCH',
     headers: {
-      'Authorization': `token ${token}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Accept': 'application/vnd.github.v3+json',
     },
