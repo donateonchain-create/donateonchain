@@ -1,0 +1,36 @@
+# Code Owners
+# These owners will be automatically requested for review when someone opens a pull request
+# that modifies code in these areas.
+
+# Default owners for everything in the repo
+* @donateonchain-create/core-team
+
+# Smart Contracts
+/src/** @donateonchain-create/contract-team
+/script/** @donateonchain-create/contract-team
+/test/** @donateonchain-create/contract-team
+foundry.toml @donateonchain-create/contract-team
+remappings.txt @donateonchain-create/contract-team
+
+# Frontend
+/apps/web/** @donateonchain-create/frontend-team
+
+# Backend Services
+/services/api/** @donateonchain-create/backend-team
+/services/relayer/** @donateonchain-create/backend-team
+
+# CI/CD and GitHub Workflows
+/.github/** @donateonchain-create/devops-team
+
+# Documentation
+*.md @donateonchain-create/docs-team
+/docs/** @donateonchain-create/docs-team
+
+# Security-sensitive files
+SECURITY.md @donateonchain-create/security-team
+/.github/workflows/security-scan.yml @donateonchain-create/security-team
+
+# Configuration files
+*.json @donateonchain-create/core-team
+*.toml @donateonchain-create/core-team
+.env.* @donateonchain-create/core-team

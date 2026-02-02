@@ -1,10 +1,22 @@
-name: CI
+name: Smart Contract CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/**'
+      - 'script/**'
+      - 'test/**'
+      - 'foundry.toml'
+      - '.github/workflows/test.yml'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/**'
+      - 'script/**'
+      - 'test/**'
+      - 'foundry.toml'
+      - '.github/workflows/test.yml'
 
 env:
   FOUNDRY_PROFILE: ci
@@ -29,17 +41,27 @@ jobs:
       - name: Install dependencies
         run: forge install
 
-      - name: Format code
+      - name: Format check
         run: |
           forge fmt --check
           echo "✓ Formatting check passed"
 
       - name: Build contracts
         run: |
-          forge build
+          forge build --sizes
           echo "✓ Build successful"
 
       - name: Run tests
         run: |
-          forge test
+          forge test -vvv
           echo "✓ All tests passed"
+
+      - name: Gas report
+        run: |
+          forge test --gas-report
+          echo "✓ Gas report generated"
+
+      - name: Coverage report
+        run: |
+          forge coverage --report summary
+          echo "✓ Coverage report generated"
