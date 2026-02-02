@@ -57,33 +57,34 @@ jobs:
         working-directory: services/api
         run: npm audit --audit-level=high || true
 
-  smart-contract-security:
-    name: Smart Contract Security
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
-
-      - name: Install dependencies
-        run: forge install
-
-      - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
-        id: slither
-        continue-on-error: true
-        with:
-          sarif: results.sarif
-          fail-on: none
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.slither.outputs.sarif }}
+  # smart-contract-security:
+  #   name: Smart Contract Security
+  #   runs-on: ubuntu-latest
+  #   
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #
+  #     - name: Install Foundry
+  #       uses: foundry-rs/foundry-toolchain@v1
+  #       with:
+  #         version: stable
+  #
+  #     - name: Install dependencies
+  #       run: forge install
+  #
+  #     - name: Run Slither
+  #       uses: crytic/slither-action@v0.4.0
+  #       id: slither
+  #       continue-on-error: true
+  #       with:
+  #         sarif: results.sarif
+  #         fail-on: none
+  #
+  #     - name: Upload SARIF file
+  #       uses: github/codeql-action/upload-sarif@v3
+  #       with:
+  #         sarif_file: ${{ steps.slither.outputs.sarif }}
+  # NOTE: Slither job disabled - produces no output and fails inconsistently

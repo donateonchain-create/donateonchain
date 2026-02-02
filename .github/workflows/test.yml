@@ -61,8 +61,6 @@ jobs:
           forge test --gas-report
           echo "✓ Gas report generated"
 
-      - name: Coverage report
-        continue-on-error: true
-        run: |
-          forge coverage --report summary --ir-minimum || echo "⚠ Coverage generation skipped due to compiler limitations"
-          echo "✓ Coverage step completed"
+      # Coverage report removed - causes "Stack too deep" compiler error with viaIR optimization
+      # The contract requires viaIR to compile, but coverage instrumentation breaks this
+      # Tests pass successfully without coverage
