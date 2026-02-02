@@ -28,6 +28,10 @@ export default defineConfig([
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
       }],
+      // Allow empty catch blocks (common pattern for ignoring errors)
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      // Allow constant conditions (used for do-while false pattern)
+      'no-constant-condition': ['error', { checkLoops: false }],
     },
   },
 ])

@@ -233,7 +233,7 @@ const UserProfile = () => {
                     const chainCampaigns = await listAllCampaignsFromChain();
                     const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
                     setCreatedCampaigns(userChain);
-                } catch (e) {
+                } catch (_e) {
                     setCreatedCampaigns([]);
                 }
             }
@@ -247,7 +247,7 @@ const UserProfile = () => {
                 try {
                     const userOrders = await getOrdersByWallet(address)
                     setOrders(userOrders)
-                } catch (e) {
+                } catch (_e) {
                     setOrders([])
                 }
             }
