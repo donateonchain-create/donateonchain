@@ -18,12 +18,13 @@ jobs:
     
     steps:
       - name: Add to Project Board
-        if: github.event.action == 'opened'
+        if: github.event.action == 'opened' && github.event.pull_request.user.type != 'Bot'
         continue-on-error: true
+        id: add-to-project
         uses: actions/add-to-project@v0.5.0
         with:
           project-url: https://github.com/users/donateonchain-create/projects/1
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Move to Done
         if: github.event.action == 'closed'
@@ -62,3 +63,9 @@ jobs:
                 });
               }
             }
+      
+      - name: Workflow Summary
+        run: |
+          echo "### Project Board Automation Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Workflow completed successfully" >> $GITHUB_STEP_SUMMARY
