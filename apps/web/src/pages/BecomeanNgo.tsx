@@ -39,7 +39,7 @@ const BecomeanNgo = () => {
                     return
                 }
             } catch (_error) {
-                console.error('Error checking Firebase for NGO application:', error)
+                console.error('Error checking Firebase for NGO application:', _error)
             }
             
             
@@ -189,6 +189,10 @@ const BecomeanNgo = () => {
             }
 
             const pc = publicClient()
+            if (!pc) {
+                setToast({ msg: 'Unable to connect to network', type: 'error' })
+                return
+            }
             const bal = await pc.getBalance({ address })
             if (bal === 0n) {
                 setToast({ msg: 'Fund your Hedera Testnet account, then retry.', type: 'error' })
