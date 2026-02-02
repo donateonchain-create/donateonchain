@@ -17,13 +17,27 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      # Check if project board automation should run
+      - name: Check if project board is enabled
+        id: check-enabled
+        run: |
+          if [[ "${{ vars.ENABLE_PROJECT_BOARD }}" == "true" ]]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Add to Project Board
-        if: github.event.action == 'opened'
+        if: |
+          github.event.action == 'opened' && 
+          github.event.pull_request.user.type != 'Bot' &&
+          steps.check-enabled.outputs.enabled == 'true'
         continue-on-error: true
+        id: add-to-project
         uses: actions/add-to-project@v0.5.0
         with:
           project-url: https://github.com/users/donateonchain-create/projects/1
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Move to Done
         if: github.event.action == 'closed'
@@ -62,3 +76,9 @@ jobs:
                 });
               }
             }
+      
+      - name: Workflow Summary
+        run: |
+          echo "### Project Board Automation Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Workflow completed successfully" >> $GITHUB_STEP_SUMMARY
