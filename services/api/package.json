@@ -19,7 +19,7 @@
     "donate-onchain": "file:../..",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
-    "multer": "^1.4.5-lts.2",
+    "multer": "^2.0.2",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "prisma": "^6.1.0",
