@@ -63,5 +63,5 @@ jobs:
 
       - name: Coverage report
         run: |
-          forge coverage --report summary
+          forge coverage --report summary --ir-minimum
           echo "✓ Coverage report generated"
