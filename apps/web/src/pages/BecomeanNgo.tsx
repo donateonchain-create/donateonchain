@@ -38,7 +38,7 @@ const BecomeanNgo = () => {
                     setExistingNgoData(firebaseApplication)
                     return
                 }
-            } catch (error) {
+            } catch (_error) {
                 console.error('Error checking Firebase for NGO application:', error)
             }
             
@@ -266,7 +266,7 @@ const BecomeanNgo = () => {
                     if (ngoOnchain && ngoOnchain.wallet) {
                         needsOnChainRegistration = false
                     }
-                } catch (checkError) {
+                } catch (_checkError) {
                     
                 }
 

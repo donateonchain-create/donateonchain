@@ -14,31 +14,32 @@ permissions:
   actions: read
 
 jobs:
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'javascript' ]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{matrix.language}}"
+  # codeql:
+  #   name: CodeQL Analysis
+  #   runs-on: ubuntu-latest
+  #   
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       language: [ 'javascript' ]
+  #   
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Initialize CodeQL
+  #       uses: github/codeql-action/init@v3
+  #       with:
+  #         languages: ${{ matrix.language }}
+  #
+  #     - name: Autobuild
+  #       uses: github/codeql-action/autobuild@v3
+  #
+  #     - name: Perform CodeQL Analysis
+  #       uses: github/codeql-action/analyze@v3
+  #       with:
+  #         category: "/language:${{matrix.language}}"
+  # NOTE: CodeQL disabled - requires Code Scanning to be enabled in repo settings
 
   dependency-check:
     name: Dependency Security Check
