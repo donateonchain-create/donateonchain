@@ -38,6 +38,30 @@ GITHUB_TOKEN=your_token GITHUB_REPOSITORY=owner/repo node .github/scripts/setup-
 - Documentation Improvements
 - Community & Growth
 
+### close-failed-prs.js
+Identifies and closes open pull requests that have failed CI checks. Useful for cleaning up PRs with persistent CI failures.
+
+**Usage:**
+```bash
+# Dry run mode (shows which PRs would be closed without actually closing them)
+GITHUB_TOKEN=your_token GITHUB_REPOSITORY=owner/repo node .github/scripts/close-failed-prs.js --dry-run
+
+# Actually close failed PRs
+GITHUB_TOKEN=your_token GITHUB_REPOSITORY=owner/repo node .github/scripts/close-failed-prs.js
+```
+
+**What it does:**
+- Fetches all open pull requests
+- Checks the CI status for each PR (both GitHub Actions check-runs and legacy status checks)
+- Identifies PRs with failed or cancelled checks
+- Adds a comment explaining why the PR is being closed
+- Closes the PR
+
+**When to use:**
+- Cleaning up stale PRs with persistent CI failures
+- Automated maintenance of PR queue
+- After fixing CI infrastructure issues that caused multiple PRs to fail
+
 ## Requirements
 
 - Node.js 18+
