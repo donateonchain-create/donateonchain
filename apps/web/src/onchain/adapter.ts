@@ -206,8 +206,9 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{ token
     }
   } catch {
     // Fallback: scan Transfer logs to this owner
-    try {
-      const logs = await client.getLogs({
+    if (client) {
+      try {
+        const logs = await client.getLogs({
         address: collection,
         fromBlock: 'earliest',
         toBlock: 'latest',
@@ -421,6 +422,8 @@ export async function createCampaignByNGO(params: { designer: HexAddress; title:
 
   try {
     const client = publicClient()
+    if (!client) return
+
     const fullReceipt = await client.getTransactionReceipt({ hash })
 
     if (fullReceipt.logs) {

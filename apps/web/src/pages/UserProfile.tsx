@@ -44,7 +44,7 @@ const UserProfile = () => {
                 const nfts = await getUserProofNFTs(address as `0x${string}`);
                 setMyNfts(nfts);
             } catch (_e) {
-                console.error('Failed to load NFTs', e);
+                console.error('Failed to load NFTs', _e);
             } finally {
                 setIsLoadingNfts(false);
             }
