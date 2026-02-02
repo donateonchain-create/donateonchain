@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hashgraph/hedera-wallet-connect": "^2.0.3",
-    "@hashgraph/sdk": "^2.75.0",
+    "@hashgraph/sdk": "^2.80.0",
     "@reown/appkit": "^1.8.11",
     "@reown/appkit-adapter-wagmi": "^1.8.11",
     "@supabase/supabase-js": "^2.76.1",
