@@ -18,7 +18,7 @@ jobs:
     
     steps:
       - name: Add to Project Board
-        if: github.event.action == 'opened' && github.event.pull_request.user.type != 'Bot'
+        if: github.event.action == 'opened' && github.event.pull_request.user.type != 'Bot' && github.repository == 'donateonchain-create/donateonchain' && vars.ENABLE_PROJECT_BOARD == 'true'
         continue-on-error: true
         id: add-to-project
         uses: actions/add-to-project@v0.5.0
