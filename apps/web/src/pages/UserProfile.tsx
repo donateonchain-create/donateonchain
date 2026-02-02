@@ -43,8 +43,8 @@ const UserProfile = () => {
             try {
                 const nfts = await getUserProofNFTs(address as `0x${string}`);
                 setMyNfts(nfts);
-            } catch (e) {
-                console.error('Failed to load NFTs', e);
+            } catch (_e) {
+                console.error('Failed to load NFTs', _e);
             } finally {
                 setIsLoadingNfts(false);
             }
@@ -233,7 +233,7 @@ const UserProfile = () => {
                     const chainCampaigns = await listAllCampaignsFromChain();
                     const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
                     setCreatedCampaigns(userChain);
-                } catch (e) {
+                } catch (_e) {
                     setCreatedCampaigns([]);
                 }
             }
@@ -247,7 +247,7 @@ const UserProfile = () => {
                 try {
                     const userOrders = await getOrdersByWallet(address)
                     setOrders(userOrders)
-                } catch (e) {
+                } catch (_e) {
                     setOrders([])
                 }
             }
@@ -259,7 +259,7 @@ const UserProfile = () => {
         const calculateStats = async () => {
             if (address && isConnected) {
                 try {
-                    
+                    // TODO: Implement stats calculation
                 } catch (error) {
                     console.error('Error loading stats from Firebase:', error);
                     // donationHistory = JSON.parse(localStorage.getItem('userDonations') || '[]');

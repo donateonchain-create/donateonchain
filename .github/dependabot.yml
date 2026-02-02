@@ -1,0 +1,93 @@
+version: 2
+
+updates:
+  # Smart Contract Dependencies (Foundry)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "smart-contracts"
+    reviewers:
+      - "donateonchain-create/contract-team"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # Frontend Dependencies
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "frontend"
+    reviewers:
+      - "donateonchain-create/frontend-team"
+    commit-message:
+      prefix: "chore(deps-frontend)"
+      include: "scope"
+    ignore:
+      # Ignore major version updates for critical packages
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # API Service Dependencies
+  - package-ecosystem: "npm"
+    directory: "/services/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "backend"
+    reviewers:
+      - "donateonchain-create/backend-team"
+    commit-message:
+      prefix: "chore(deps-api)"
+      include: "scope"
+
+  # Relayer Service Dependencies
+  - package-ecosystem: "npm"
+    directory: "/services/relayer"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "relayer"
+    reviewers:
+      - "donateonchain-create/backend-team"
+    commit-message:
+      prefix: "chore(deps-relayer)"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci-cd"
+    reviewers:
+      - "donateonchain-create/devops-team"
+    commit-message:
+      prefix: "chore(deps-actions)"
+      include: "scope"

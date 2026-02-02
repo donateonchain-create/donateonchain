@@ -1,0 +1,71 @@
+name: API Service CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'services/api/**'
+      - '.github/workflows/api-ci.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'services/api/**'
+      - '.github/workflows/api-ci.yml'
+
+jobs:
+  test:
+    name: API Tests
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: services/api
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: services/api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+
+      - name: Run Prisma migrations
+        run: npm run prisma:migrate:deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+
+      - name: Check code (if tests exist)
+        run: |
+          if [ -f "package.json" ] && grep -q "\"test\":" package.json; then
+            npm test
+          else
+            echo "No tests configured, skipping..."
+          fi
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb

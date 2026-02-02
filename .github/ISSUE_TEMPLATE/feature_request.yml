@@ -1,0 +1,40 @@
+---
+name: ✨ Feature Request
+about: Suggest a new feature or enhancement
+title: '[FEATURE] '
+labels: ['enhancement', 'needs-triage']
+assignees: []
+---
+
+## 🎯 Feature Description
+<!-- A clear and concise description of the feature you'd like to see -->
+
+## 💡 Problem Statement
+<!-- What problem does this feature solve? What use case does it address? -->
+
+## 🎨 Proposed Solution
+<!-- Describe how you envision this feature working -->
+
+## 🔄 Alternative Solutions
+<!-- Have you considered any alternative solutions or features? -->
+
+## 📊 Impact
+<!-- Who would benefit from this feature? How would it improve the project? -->
+- **Users Affected**: [e.g., Donors, NGOs, Admins, Designers]
+- **Priority**: [e.g., Low, Medium, High, Critical]
+- **Effort Estimate**: [e.g., Small, Medium, Large]
+
+## 🎨 Design/Mockups
+<!-- If applicable, add mockups, wireframes, or design ideas -->
+
+## 🔗 Related Issues/PRs
+<!-- Link any related issues or pull requests here -->
+
+## 📝 Additional Context
+<!-- Add any other context, technical considerations, or screenshots -->
+
+## ✔️ Checklist
+- [ ] I have searched existing issues and feature requests
+- [ ] I have clearly described the problem this solves
+- [ ] I have explained the proposed solution
+- [ ] This feature aligns with the project's goals

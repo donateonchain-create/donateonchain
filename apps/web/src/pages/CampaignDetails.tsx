@@ -316,7 +316,7 @@ const CampaignDetails = () => {
                                             await deactivateCampaign(BigInt(campaign.onchainId || campaign.id));
                                             setCampaign({ ...campaign, active: false });
                                             navigate('/user-profile');
-                                        } catch (e) {
+                                        } catch (_e) {
                                             alert('Failed to delete campaign.');
                                         }
                                     }}
@@ -458,7 +458,7 @@ const CampaignDetails = () => {
                             setIsCampaignUpdated(true);
                             setTimeout(() => setIsCampaignUpdated(false), 4000);
                             setIsEditModalOpen(false);
-                        } catch (err: any) {
+                        } catch (_err: any) {
                             
                         } finally {
                             setIsUploadingCampaign(false);

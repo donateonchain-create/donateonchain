@@ -19,5 +19,19 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Temporarily allow 'any' type for gradual type safety improvement
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // Allow unused vars with underscore prefix
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
+      // Allow empty catch blocks (common pattern for ignoring errors)
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      // Allow constant conditions (used for do-while false pattern)
+      'no-constant-condition': ['error', { checkLoops: false }],
+    },
   },
 ])

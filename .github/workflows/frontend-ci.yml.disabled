@@ -1,0 +1,49 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/frontend-ci.yml'
+
+jobs:
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: apps/web
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_HEDERA_NETWORK: testnet
+          VITE_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: apps/web/dist
+          retention-days: 7
