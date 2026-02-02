@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/donateonchain-create/donateonchain/blob/main/README.md
+    about: Read the project documentation

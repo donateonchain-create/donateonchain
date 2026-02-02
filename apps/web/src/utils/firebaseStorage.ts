@@ -655,7 +655,7 @@ export const uploadCampaignImageToFirebase = async () => {
 export const deleteCampaignStorageAssets = async (campaignId: number | string) => {
   try {
     return true
-  } catch (e) {
+  } catch (_e) {
     console.warn('No campaign storage assets or failed to delete for', campaignId)
     return false
   }
@@ -666,7 +666,7 @@ export const deleteCampaignEverywhere = async (campaignId: number) => {
     try {
       const cid = await getCampaignMetadataCid(BigInt(campaignId))
       if (cid) { await unpinCID(cid) }
-    } catch (e) {
+    } catch (_e) {
       console.warn('Could not resolve/unpin campaign metadata CID for', campaignId)
     }
     await deleteCampaignStorageAssets(campaignId)
