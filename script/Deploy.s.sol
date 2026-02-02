@@ -3,9 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {DonateOnChain} from "../src/DonateOnChain.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title Deploy
@@ -41,11 +39,7 @@ contract Deploy is Script {
         // Deploy proxy with initialization
         console2.log("\n[2/4] Deploying proxy...");
         bytes memory initData = abi.encodeWithSelector(
-            DonateOnChain.initialize.selector,
-            admin,
-            treasurySigners,
-            treasuryThreshold,
-            platformWallet
+            DonateOnChain.initialize.selector, admin, treasurySigners, treasuryThreshold, platformWallet
         );
 
         proxy = address(new ERC1967Proxy(implementation, initData));
@@ -53,17 +47,11 @@ contract Deploy is Script {
 
         // Setup roles
         console2.log("\n[3/4] Granting COMPLIANCE_OFFICER_ROLE...");
-        DonateOnChain(payable(proxy)).grantRole(
-            keccak256("COMPLIANCE_OFFICER_ROLE"),
-            complianceOfficer
-        );
+        DonateOnChain(payable(proxy)).grantRole(keccak256("COMPLIANCE_OFFICER_ROLE"), complianceOfficer);
         console2.log("  -> Granted to:", complianceOfficer);
 
         console2.log("\n[4/4] Granting CAMPAIGN_MANAGER_ROLE...");
-        DonateOnChain(payable(proxy)).grantRole(
-            keccak256("CAMPAIGN_MANAGER_ROLE"),
-            campaignManager
-        );
+        DonateOnChain(payable(proxy)).grantRole(keccak256("CAMPAIGN_MANAGER_ROLE"), campaignManager);
         console2.log("  -> Granted to:", campaignManager);
 
         vm.stopBroadcast();
