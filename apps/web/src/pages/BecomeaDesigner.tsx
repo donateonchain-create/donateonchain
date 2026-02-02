@@ -237,7 +237,7 @@ const BecomeaDesigner = () => {
                     if (designerOnchain && designerOnchain.wallet) {
                         needsOnChainRegistration = false
                     }
-                } catch (checkError) {
+                } catch (_checkError) {
                     
                 }
 

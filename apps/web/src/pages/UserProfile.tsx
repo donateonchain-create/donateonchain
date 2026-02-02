@@ -43,7 +43,7 @@ const UserProfile = () => {
             try {
                 const nfts = await getUserProofNFTs(address as `0x${string}`);
                 setMyNfts(nfts);
-            } catch (e) {
+            } catch (_e) {
                 console.error('Failed to load NFTs', e);
             } finally {
                 setIsLoadingNfts(false);
@@ -259,7 +259,7 @@ const UserProfile = () => {
         const calculateStats = async () => {
             if (address && isConnected) {
                 try {
-                    
+                    // TODO: Implement stats calculation
                 } catch (error) {
                     console.error('Error loading stats from Firebase:', error);
                     // donationHistory = JSON.parse(localStorage.getItem('userDonations') || '[]');
