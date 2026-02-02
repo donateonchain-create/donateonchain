@@ -98,19 +98,19 @@ const milestones = [
     state: 'open',
   },
   {
-    title: 'Community & Growth',
+    title: 'Team Growth & Adoption',
     description: `
 ## Goals
-- Grow the community
-- Increase adoption
+- Grow the team capabilities
+- Increase platform adoption
 - Partner with NGOs
 
 ## Activities
-- Community outreach
+- Team training and development
 - Partnership development
 - Marketing campaigns
-- Hackathons and events
-- Social media presence
+- Events and demonstrations
+- Platform promotion
     `.trim(),
     due_on: null,
     state: 'open',

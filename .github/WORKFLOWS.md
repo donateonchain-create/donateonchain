@@ -400,25 +400,6 @@ Run once to initialize repository organization. Can be re-run to update labels.
    - Provide reproducible steps
    - Include environment details
 
-### For Maintainers
-
-1. **Workflow Maintenance:**
-   - Keep actions up to date
-   - Monitor workflow run times
-   - Review and adjust timeouts
-   - Update Node.js/Foundry versions
-
-2. **Security:**
-   - Review security scan results weekly
-   - Act on Dependabot PRs promptly
-   - Monitor for new vulnerabilities
-
-3. **Organization:**
-   - Triage issues regularly
-   - Update milestones
-   - Keep labels organized
-   - Review stale items
-
 ---
 
 ## 🐛 Troubleshooting
@@ -459,7 +440,7 @@ Run once to initialize repository organization. Can be re-run to update labels.
    - Open security issues
 
 3. **Community:**
-   - First-time contributors
+   - Team members onboarded
    - PR merge time
    - Issue resolution time
 

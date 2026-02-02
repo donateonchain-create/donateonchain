@@ -45,10 +45,9 @@ const labels = [
   { name: 'security', color: 'ee0701', description: 'Security-related issue' },
   { name: 'vulnerability', color: 'ee0701', description: 'Security vulnerability' },
   
-  // Good for contributors
-  { name: 'good first issue', color: '7057ff', description: 'Good for newcomers' },
-  { name: 'help wanted', color: '008672', description: 'Extra attention is needed' },
-  { name: 'hacktoberfest', color: 'ff6b00', description: 'Hacktoberfest eligible' },
+  // Team coordination
+  { name: 'needs-discussion', color: '008672', description: 'Needs team discussion' },
+  { name: 'quick-win', color: '7057ff', description: 'Quick task that can be done easily' },
   
   // Automation labels
   { name: 'needs-triage', color: 'fbca04', description: 'Needs to be triaged by maintainers' },

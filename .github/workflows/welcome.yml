@@ -1,50 +1,41 @@
-name: Welcome New Contributors
+name: Issue and PR Notifications
 
 on:
   issues:
-    types: [opened]
-  pull_request_target:
-    types: [opened]
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, ready_for_review]
 
 permissions:
   issues: write
   pull-requests: write
 
 jobs:
-  welcome:
-    name: Welcome Message
+  notify:
+    name: Team Notifications
     runs-on: ubuntu-latest
     
     steps:
-      - name: Welcome First Time Contributors
-        uses: actions/first-interaction@v1
+      - name: Notify on critical issues
+        if: github.event.action == 'labeled' && contains(github.event.label.name, 'critical')
+        uses: actions/github-script@v7
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          issue-message: |
-            👋 Welcome to DonateOnChain! Thank you for opening your first issue.
-            
-            We appreciate your contribution and will review your issue as soon as possible. 
-            
-            In the meantime:
-            - Please ensure you've filled out all sections of the issue template
-            - Check our [Contributing Guidelines](../CONTRIBUTING.md) if you haven't already
-            - Join our [Discussions](https://github.com/donateonchain-create/donateonchain/discussions) for questions
-            
-            A maintainer will be with you shortly. Thanks for helping make charitable giving more transparent! 🙏
-          pr-message: |
-            👋 Welcome to DonateOnChain! Thank you for opening your first pull request.
-            
-            We're excited to see your contribution! Here's what happens next:
-            
-            1. 🤖 Automated checks will run to verify your code
-            2. 👀 A maintainer will review your changes
-            3. 💬 We may suggest some changes or improvements
-            4. ✅ Once approved, we'll merge your PR!
-            
-            Please make sure:
-            - [ ] All tests are passing
-            - [ ] You've filled out the PR template completely
-            - [ ] Your code follows our [Contributing Guidelines](../CONTRIBUTING.md)
-            - [ ] Documentation is updated if needed
-            
-            Thank you for your contribution! 🎉
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '⚠️ **Critical Priority** - This issue has been marked as critical and needs immediate attention from the team.'
+            })
+      
+      - name: Notify on security issues
+        if: github.event.action == 'labeled' && contains(github.event.label.name, 'security')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🔒 **Security Issue** - This issue involves security concerns and should be reviewed by the security team.'
+            })

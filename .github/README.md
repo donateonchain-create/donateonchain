@@ -68,15 +68,15 @@ GITHUB_TOKEN=your_token node .github/scripts/setup-labels.js
 Milestones help organize work towards specific goals:
 
 - **v1.1.0** - Enhanced Features
-- **v1.2.0** - Scaling & Performance
+- **v1.2.0** - Scaling & Performance  
 - **v2.0.0** - Major Upgrade
 - **Security Audit** - Security improvements
 - **Documentation** - Documentation improvements
-- **Community & Growth** - Community building
+- **Community & Growth** - Team growth and adoption
 
 Run the setup script to create milestones:
 ```bash
-GITHUB_TOKEN=your_token node .github/scripts/setup-milestones.js
+GITHUB_TOKEN=xxx node .github/scripts/setup-milestones.js
 ```
 
 ## 👥 Code Owners
@@ -133,17 +133,18 @@ Use these commands in issue/PR comments:
 
 ## 🚀 Getting Started
 
-### For Contributors
-1. Read [CONTRIBUTING.md](../CONTRIBUTING.md)
+### Getting Started
+
+1. Read [TEAM_GUIDELINES.md](../TEAM_GUIDELINES.md)
 2. Check issue templates before creating issues
 3. Use PR template when submitting changes
 4. Watch for automated checks and reviews
 
-### For Maintainers
+### For Team Leaders
 1. Run setup scripts to initialize labels and milestones
 2. Configure CODEOWNERS teams in repository settings
 3. Set up required status checks for branch protection
-4. Configure GitHub token for workflows if needed
+4. Configure GitHub tokens for workflows if needed
 
 ## 📚 Additional Resources
 
