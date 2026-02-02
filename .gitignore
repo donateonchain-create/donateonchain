@@ -2,10 +2,8 @@
 cache/
 out/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
+# Broadcast logs (deployment artifacts)
+broadcast/
 
 # Docs
 docs/
@@ -17,22 +15,19 @@ docs/
 .env.development
 .env.backup
 .env.old
-.env.example
-# NOTE: .env.1password is safe to commit - it only contains secret references, not actual values
+# NOTE: .env.1password is safe to commit - it only contains secret references
 !.env.1password
 !services/api/.env.example
+!apps/web/.env.example
 
 # Node modules
 node_modules/
-apps/web/node_modules/
 yarn.lock
 pnpm-lock.yaml
 
 # Build outputs
 dist/
 build/
-apps/web/dist/
-apps/web/build/
 *.log
 
 # IDE
@@ -55,18 +50,20 @@ Thumbs.db
 forge-cache/
 .solhint.json
 
-# Documentation (generated)
-FINAL_SUMMARY.md
-IMPLEMENTATION_SUMMARY.md
-QUICKSTART.md
-SecurityEdgeCases.md
-build.md
-Vulnerability_Response.md
-# IMPROVEMENTS.md is tracked - keep this file in git
-
 # Personal notes and todos
-notes.md
-presentation_notes.md
-ROLES_AND_SCALABILITY.md
-architecture.md
 todo/
+notes.md
+architecture.md
+
+# Deployment artifacts (regenerated on deployment)
+deployment-output.json
+deployments/
+
+# Legacy/duplicate folders
+frontend/
+
+# Postman collection
+*.postman_collection.json
+
+# AI agent workflows (local)
+.agent/
