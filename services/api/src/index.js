@@ -1,6 +1,9 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import { createPublicClient, createWalletClient, http } from 'viem'
+import { hederaTestnet } from 'viem/chains'
+import { privateKeyToAccount } from 'viem/accounts'
 import multer from 'multer'
 import pinoHttp from 'pino-http'
 import { PrismaClient } from '@prisma/client'
@@ -14,6 +17,48 @@ app.use(express.json({ limit: '2mb' }))
 app.use(pinoHttp())
 
 const upload = multer({ storage: multer.memoryStorage() })
+
+const AdminKycUpdateSchema = z.object({
+  status: z.enum(['pending', 'in_review', 'approved', 'rejected', 'expired']),
+  triggerOnChain: z.boolean().optional(),
+})
+
+app.post('/api/kyc/verifications/:id/admin-update', async (req, res) => {
+  const apiKey = process.env.KYC_ADMIN_API_KEY
+  if (apiKey && req.get('x-api-key') !== apiKey) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const parsed = AdminKycUpdateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const record = await prisma.kycVerification.findUnique({ where: { id: req.params.id } })
+  if (!record) return res.status(404).json({ error: 'Not found' })
+
+  const nextStatus = parsed.data.status
+  const updated = await prisma.kycVerification.update({
+    where: { id: record.id },
+    data: {
+      status: nextStatus,
+      completedAt:
+        nextStatus === 'approved' || nextStatus === 'rejected' || nextStatus === 'expired' ? new Date() : null,
+    },
+  })
+
+  if (parsed.data.triggerOnChain && nextStatus === 'approved') {
+    try {
+      const chainResult = await verifyAccountOnChain(updated.walletAddress)
+      return res.json({ ok: true, verification: updated, chainResult })
+    } catch (chainError) {
+      req.log?.error(chainError, 'kyc_chain_sync_failed')
+      return res.json({ ok: true, verification: updated, chainError: 'kyc_chain_sync_failed' })
+    }
+  }
+
+  res.json({ ok: true, verification: updated })
+})
 
 function normalizeAddress(address) {
   return String(address).toLowerCase()
@@ -414,6 +459,25 @@ const MockKycDecisionSchema = z.object({
   status: z.enum(['in_review', 'approved', 'rejected', 'expired']),
 })
 
+app.get('/api/kyc/health', async (req, res) => {
+  const config = {
+    provider: process.env.KYC_PROVIDER || 'mock',
+    webhookSecretSet: Boolean(process.env.KYC_WEBHOOK_SECRET || process.env.DIDIT_WEBHOOK_SECRET),
+    onchainConfigured: Boolean(process.env.KYC_COMPLIANCE_PRIVATE_KEY && process.env.DONATEONCHAIN_PROXY_ADDRESS),
+    rpcUrl: process.env.KYC_CHAIN_RPC_URL || 'https://testnet.hashio.io/api',
+  }
+
+  const lastVerification = await prisma.kycVerification.findFirst({
+    orderBy: { createdAt: 'desc' },
+  })
+
+  res.json({
+    status: 'ok',
+    config,
+    lastVerification,
+  })
+})
+
 app.post('/api/kyc/mock/:id/decision', async (req, res) => {
   const id = req.params.id
   const parsed = MockKycDecisionSchema.safeParse(req.body)
@@ -443,49 +507,157 @@ app.post('/api/kyc/mock/:id/decision', async (req, res) => {
 })
 
 const KycWebhookSchema = z.object({
-  eventId: z.string().optional(),
-  verificationId: z.string().optional(),
-  providerRef: z.string().optional(),
-  status: z.enum(['pending', 'in_review', 'approved', 'rejected', 'expired']).optional(),
+  eventId: z.union([z.string(), z.number()]).optional(),
+  verificationId: z.union([z.string(), z.number()]).optional(),
+  providerRef: z.union([z.string(), z.number()]).optional(),
+  status: z.string().optional(),
   payload: z.any().optional(),
-})
+}).passthrough()
+
+const DIDIT_STATUS_MAP = {
+  approved: 'approved',
+  success: 'approved',
+  completed: 'approved',
+  rejected: 'rejected',
+  declined: 'rejected',
+  expired: 'expired',
+  pending: 'pending',
+  in_review: 'in_review',
+}
+
+const DONATEONCHAIN_ABI = [
+  {
+    type: 'function',
+    name: 'verifyAccount',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [],
+  },
+]
+
+let kycWalletClient
+let kycPublicClient
+let kycAccount
+
+function initKycClients() {
+  if (kycWalletClient && kycPublicClient && kycAccount) return
+  const privateKey = process.env.KYC_COMPLIANCE_PRIVATE_KEY
+  if (!privateKey) return
+  kycAccount = privateKeyToAccount(privateKey)
+  const rpcUrl = process.env.KYC_CHAIN_RPC_URL || 'https://testnet.hashio.io/api'
+  kycWalletClient = createWalletClient({
+    account: kycAccount,
+    chain: hederaTestnet,
+    transport: http(rpcUrl),
+  })
+  kycPublicClient = createPublicClient({
+    chain: hederaTestnet,
+    transport: http(rpcUrl),
+  })
+}
+
+async function verifyAccountOnChain(walletAddress) {
+  initKycClients()
+  const contractAddress = process.env.DONATEONCHAIN_PROXY_ADDRESS
+  if (!kycWalletClient || !kycPublicClient || !contractAddress) {
+    return { skipped: true }
+  }
+  const txHash = await kycWalletClient.writeContract({
+    address: contractAddress,
+    abi: DONATEONCHAIN_ABI,
+    functionName: 'verifyAccount',
+    args: [walletAddress],
+  })
+  const receipt = await kycPublicClient.waitForTransactionReceipt({ hash: txHash })
+  return { txHash, receipt }
+}
 
 app.post('/api/kyc/webhook/:provider', async (req, res) => {
   const provider = req.params.provider
   const secret = process.env.KYC_WEBHOOK_SECRET
-  if (secret && req.get('x-webhook-secret') !== secret) {
+  const diditSecret = process.env.DIDIT_WEBHOOK_SECRET
+  const headerSecret = req.get('x-webhook-secret') || req.get('x-didit-webhook-secret')
+  if (secret && headerSecret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  if (provider === 'didit' && diditSecret && headerSecret !== diditSecret) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
   const parsed = KycWebhookSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
+  const payload = parsed.success ? parsed.data : { payload: req.body }
 
   try {
-    const eventId = parsed.data.eventId
-    const verificationId = parsed.data.verificationId
+    const eventId = parsed.success ? payload.eventId : null
+    const verificationId = parsed.success ? payload.verificationId : null
+    const providerRef = parsed.success ? payload.providerRef : null
+    const rawPayload = payload.payload ?? req.body
+    const diditCandidateId =
+      rawPayload?.applicantId ||
+      rawPayload?.verificationId ||
+      rawPayload?.userId ||
+      rawPayload?.data?.applicantId ||
+      rawPayload?.data?.verificationId ||
+      null
+    const diditStatusRaw =
+      rawPayload?.status ||
+      rawPayload?.reviewStatus ||
+      rawPayload?.result ||
+      rawPayload?.data?.status ||
+      rawPayload?.data?.reviewStatus ||
+      rawPayload?.data?.result ||
+      null
+    const normalizedStatus = diditStatusRaw ? DIDIT_STATUS_MAP[String(diditStatusRaw).toLowerCase()] : null
 
     const stored = await prisma.kycWebhookEvent.create({
       data: {
         provider,
         eventId: eventId ?? null,
-        verificationId: verificationId ?? null,
-        payload: parsed.data.payload ?? req.body,
+        verificationId: verificationId ?? diditCandidateId ?? null,
+        payload: rawPayload,
       },
     })
 
-    if (verificationId && parsed.data.status) {
-      await prisma.kycVerification.update({
-        where: { id: verificationId },
-        data: {
-          status: parsed.data.status,
-          completedAt:
-            parsed.data.status === 'approved' || parsed.data.status === 'rejected' || parsed.data.status === 'expired'
-              ? new Date()
-              : null,
+    let targetVerification = null
+    if (verificationId) {
+      targetVerification = await prisma.kycVerification.findUnique({ where: { id: verificationId } })
+    }
+    if (!targetVerification && (providerRef || diditCandidateId)) {
+      targetVerification = await prisma.kycVerification.findFirst({
+        where: {
+          provider,
+          providerRef: providerRef ?? diditCandidateId ?? undefined,
         },
       })
+    }
+
+    const parsedStatus = parsed.success && payload.status ? DIDIT_STATUS_MAP[String(payload.status).toLowerCase()] : null
+    if (targetVerification && (parsedStatus || normalizedStatus)) {
+      const nextStatus = parsedStatus ?? normalizedStatus
+      const updated = await prisma.kycVerification.update({
+        where: { id: targetVerification.id },
+        data: {
+          status: nextStatus,
+          completedAt:
+            nextStatus === 'approved' || nextStatus === 'rejected' || nextStatus === 'expired'
+              ? new Date()
+              : null,
+          providerRef: targetVerification.providerRef ?? providerRef ?? diditCandidateId ?? null,
+        },
+      })
+
+      if (provider === 'didit' && nextStatus === 'approved') {
+        try {
+          const walletAddress = updated.walletAddress
+          const chainResult = await verifyAccountOnChain(walletAddress)
+          return res.json({ ok: true, id: stored.id, verification: updated, chainResult })
+        } catch (chainError) {
+          req.log?.error(chainError, 'kyc_chain_sync_failed')
+          return res.json({ ok: true, id: stored.id, verification: updated, chainError: 'kyc_chain_sync_failed' })
+        }
+      }
+
+      return res.json({ ok: true, id: stored.id, verification: updated })
     }
 
     res.json({ ok: true, id: stored.id })
