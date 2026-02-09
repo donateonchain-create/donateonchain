@@ -18,6 +18,43 @@ app.use(pinoHttp())
 
 const upload = multer({ storage: multer.memoryStorage() })
 
+const adminApiKey = process.env.KYC_ADMIN_API_KEY
+
+function requireAdminApiKey(req, res, next) {
+  if (adminApiKey && req.get('x-api-key') !== adminApiKey) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  return next()
+}
+
+const rateLimitWindowMs = Number(process.env.KYC_RATE_LIMIT_WINDOW_MS || 60000)
+const rateLimitMax = Number(process.env.KYC_RATE_LIMIT_MAX || 30)
+const kycRateLimits = new Map()
+
+function getClientIp(req) {
+  const forwarded = req.get('x-forwarded-for')
+  if (typeof forwarded === 'string' && forwarded.trim() !== '') {
+    return forwarded.split(',')[0].trim()
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown'
+}
+
+function kycRateLimit(req, res, next) {
+  const now = Date.now()
+  const ip = getClientIp(req)
+  const entry = kycRateLimits.get(ip)
+  if (!entry || now - entry.start > rateLimitWindowMs) {
+    kycRateLimits.set(ip, { start: now, count: 1 })
+    return next()
+  }
+  if (entry.count >= rateLimitMax) {
+    return res.status(429).json({ error: 'rate_limited' })
+  }
+  entry.count += 1
+  kycRateLimits.set(ip, entry)
+  return next()
+}
+
 const AdminKycUpdateSchema = z.object({
   status: z.enum(['pending', 'in_review', 'approved', 'rejected', 'expired']),
   triggerOnChain: z.boolean().optional(),
@@ -79,7 +116,7 @@ function getMirrorConfig() {
     .filter(Boolean)
     .map(normalizeMirrorContractIdOrAddress)
 
-  const pollIntervalMs = Number(process.env.MIRROR_POLL_INTERVAL_MS || 15000)
+  const pollIntervalMs = Number(process.env.MIRROR_POLL_INTERVAL_MS || 3000)
   const startTimestamp = (process.env.MIRROR_START_TIMESTAMP || '').trim()
 
   return { baseUrl, contracts, pollIntervalMs, startTimestamp }
@@ -412,7 +449,7 @@ const CreateKycVerificationSchema = z.object({
   metadata: z.any().optional(),
 })
 
-app.post('/api/kyc/verifications', async (req, res) => {
+app.post('/api/kyc/verifications', kycRateLimit, async (req, res) => {
   const parsed = CreateKycVerificationSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() })
@@ -535,40 +572,37 @@ const DONATEONCHAIN_ABI = [
   },
 ]
 
-let kycWalletClient
-let kycPublicClient
-let kycAccount
-
-function initKycClients() {
-  if (kycWalletClient && kycPublicClient && kycAccount) return
+function getKycClients() {
   const privateKey = process.env.KYC_COMPLIANCE_PRIVATE_KEY
-  if (!privateKey) return
-  kycAccount = privateKeyToAccount(privateKey)
+  if (!privateKey) return null
   const rpcUrl = process.env.KYC_CHAIN_RPC_URL || 'https://testnet.hashio.io/api'
-  kycWalletClient = createWalletClient({
-    account: kycAccount,
+  const account = privateKeyToAccount(privateKey)
+  const walletClient = createWalletClient({
+    account,
     chain: hederaTestnet,
     transport: http(rpcUrl),
   })
-  kycPublicClient = createPublicClient({
+  const publicClient = createPublicClient({
     chain: hederaTestnet,
     transport: http(rpcUrl),
   })
+  return { walletClient, publicClient }
 }
 
 async function verifyAccountOnChain(walletAddress) {
-  initKycClients()
   const contractAddress = process.env.DONATEONCHAIN_PROXY_ADDRESS
-  if (!kycWalletClient || !kycPublicClient || !contractAddress) {
+  const clients = getKycClients()
+  if (!clients || !contractAddress) {
     return { skipped: true }
   }
-  const txHash = await kycWalletClient.writeContract({
+  const { walletClient, publicClient } = clients
+  const txHash = await walletClient.writeContract({
     address: contractAddress,
     abi: DONATEONCHAIN_ABI,
     functionName: 'verifyAccount',
     args: [walletAddress],
   })
-  const receipt = await kycPublicClient.waitForTransactionReceipt({ hash: txHash })
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
   return { txHash, receipt }
 }
 
@@ -676,7 +710,7 @@ const DesignIndexUpsertSchema = z.object({
   designCid: z.string().min(1).optional(),
 })
 
-app.put('/api/design-index/:designId', async (req, res) => {
+app.put('/api/design-index/:designId', requireAdminApiKey, async (req, res) => {
   const designId = req.params.designId
   const parsed = DesignIndexUpsertSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -714,7 +748,7 @@ const KvUpsertSchema = z.object({
   data: z.any(),
 })
 
-app.put('/api/kv/:collection/:key', async (req, res) => {
+app.put('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
   const collection = req.params.collection
   const key = req.params.key
 
@@ -732,7 +766,7 @@ app.put('/api/kv/:collection/:key', async (req, res) => {
   res.json({ key: record.key, data: record.data })
 })
 
-app.get('/api/kv/:collection/:key', async (req, res) => {
+app.get('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
   const collection = req.params.collection
   const key = req.params.key
 
@@ -744,7 +778,7 @@ app.get('/api/kv/:collection/:key', async (req, res) => {
   res.json({ key: record.key, data: record.data })
 })
 
-app.get('/api/kv/:collection', async (req, res) => {
+app.get('/api/kv/:collection', requireAdminApiKey, async (req, res) => {
   const collection = req.params.collection
   const keyPrefix = typeof req.query.keyPrefix === 'string' ? req.query.keyPrefix : undefined
 
@@ -759,7 +793,7 @@ app.get('/api/kv/:collection', async (req, res) => {
   res.json(records.map((r) => ({ key: r.key, data: r.data })))
 })
 
-app.delete('/api/kv/:collection/:key', async (req, res) => {
+app.delete('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
   const collection = req.params.collection
   const key = req.params.key
   try {
@@ -884,11 +918,16 @@ app.listen(PORT, () => {
 
   const { contracts, pollIntervalMs } = getMirrorConfig()
   if (contracts.length) {
-    setTimeout(() => {
-      runMirrorSyncCycle().catch((e) => console.error('[mirror] sync cycle failed', e))
-      setInterval(() => {
-        runMirrorSyncCycle().catch((e) => console.error('[mirror] sync cycle failed', e))
-      }, pollIntervalMs)
-    }, 1000)
+    const loop = async () => {
+      try {
+        await runMirrorSyncCycle()
+      } catch (e) {
+        console.error('[mirror] sync cycle failed', e)
+      } finally {
+        setTimeout(loop, pollIntervalMs)
+      }
+    }
+
+    setTimeout(loop, 1000)
   }
 })
