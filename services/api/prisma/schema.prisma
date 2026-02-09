@@ -51,6 +51,42 @@ model Donation {
   @@index([createdAt])
 }
 
+model Campaign {
+  id              String   @id
+  ngoAddress      String
+  designerAddress String?
+  targetAmount    String
+  deadline        String
+  raisedAmount    String   @default("0")
+  vettedApproved  Boolean?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ngoAddress])
+  @@index([createdAt])
+}
+
+model Ngo {
+  address   String   @id
+  name      String?
+  kycStatus String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DonationEvent {
+  id          String   @id @default(cuid())
+  campaignId  String
+  donor       String
+  amount      String
+  txHash      String?
+  createdAt   DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([donor])
+  @@index([createdAt])
+}
+
 model DesignIndex {
   designId    String   @id
   metadataCid String
