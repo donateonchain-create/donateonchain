@@ -1,0 +1,5 @@
+const CONTRACTS = {
+  DONATE_ON_CHAIN: '0xebA3fc3b4cDBA1A4625203347a8397a69d52D242',
+}
+
+export default CONTRACTS

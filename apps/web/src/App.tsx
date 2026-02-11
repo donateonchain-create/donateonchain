@@ -15,7 +15,7 @@ import HowItWorks from './pages/HowItWorks'
 import CreateDesign from './pages/CreateDesign'
 import BecomeanNgo from './pages/BecomeanNgo'
 import BecomeaDesigner from './pages/BecomeaDesigner'
-import AdminPage from './pages/Admin'
+import { adminRoutes } from './admin'
 import Header from './component/Header'
 import Waitlist from './pages/Waitlist'
 import ProfileSetupModal from './component/ProfileSetupModal'
@@ -28,6 +28,7 @@ const AppContent = () => {
     const [showProfileSetup, setShowProfileSetup] = useState(false)
     const [existingProfile, setExistingProfile] = useState<any>(null)
     const isWaitlistPage = location.pathname === '/waitlist'
+    const isAdminPage = location.pathname.startsWith('/admin')
 
     useEffect(() => {
         console.log('App component rendered')
@@ -117,7 +118,7 @@ const AppContent = () => {
 
     return (
         <>
-            {!isWaitlistPage && <Header />}
+            {!isWaitlistPage && !isAdminPage && <Header />}
             <ScrollToTop />
             <ProfileSetupModal isOpen={showProfileSetup} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
             <Routes>
@@ -133,7 +134,7 @@ const AppContent = () => {
                     <Route path="/create-design" element={<PrivateRoute><CreateDesign /></PrivateRoute>} />
                     <Route path="/become-an-ngo" element={<BecomeanNgo />} />
                     <Route path="/become-a-designer" element={<BecomeaDesigner />} />
-                    <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
+                    {adminRoutes}
                 <Route path="/waitlist" element={<Waitlist />} />
             </Routes>
         </>

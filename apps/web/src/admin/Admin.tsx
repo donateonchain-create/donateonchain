@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWatchContractEvent } from 'wagmi'
-import Header from '../component/Header'
-import Footer from '../component/Footer'
 import Button from '../component/Button'
 import { addresses, abis } from '../onchain/contracts'
 import { updateNgoApplicationStatus, getNgoApplications, updateDesignerApplicationStatus, getDesignerApplications, saveAdminList, getAdminList, getAllGlobalDesigns, getDesignIndex, getUserProfile, deleteCampaignEverywhere, deleteDesignEverywhere } from '../utils/firebaseStorage'
@@ -11,8 +9,7 @@ import { adminAddAdmin, adminRemoveAdmin, adminApproveNgo, adminApproveDesigner,
 
 const AdminPage = () => {
   const { address, isConnected } = useAccount()
-  const [owner, setOwner] = useState<string>('')
-  const [isAdmin, setIsAdmin] = useState<boolean>(false)
+  const [, setIsAdmin] = useState<boolean>(false)
   const [newAdminAdd, setNewAdminAdd] = useState('')
   const [newAdminRemove, setNewAdminRemove] = useState('')
   const [pendingNgos, setPendingNgos] = useState<string[]>([])
@@ -158,17 +155,13 @@ const AdminPage = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const o = await read<string>({ address: addresses.ADMIN_REGISTRY as `0x${string}`, abi: abis.AdminRegistry as any, functionName: 'owner' })
-        setOwner(o as string)
-      } catch {}
-      try {
         if (address) {
-          const a = await read<boolean>({ address: addresses.ADMIN_REGISTRY as `0x${string}`, abi: abis.AdminRegistry as any, functionName: 'isAdmin', args: [address] })
+          const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
+          const a = await read<boolean>({ address: addresses.DONATE_ON_CHAIN as `0x${string}`, abi: abis.DonateOnChain as any, functionName: 'hasRole', args: [DEFAULT_ADMIN_ROLE, address] })
           setIsAdmin(Boolean(a))
         }
       } catch {}
       await refreshLists()
-      
       const savedAdmins = await getAdminList()
       setAdminList(savedAdmins)
     }
@@ -176,31 +169,37 @@ const AdminPage = () => {
   }, [address])
 
   useWatchContractEvent({
-    address: addresses.ADMIN_REGISTRY as any,
-    abi: abis.AdminRegistry as any,
-    eventName: 'AdminAdded',
+    address: addresses.DONATE_ON_CHAIN as any,
+    abi: abis.DonateOnChain as any,
+    eventName: 'RoleGranted',
     onLogs: async (logs) => {
-      const newAdmins = logs.map((log: any) => log.args?.admin).filter(Boolean)
-      const currentList = await getAdminList()
-      const updatedAdmins = [...new Set([...currentList, ...newAdmins])]
-      await saveAdminList(updatedAdmins)
-      setAdminList(updatedAdmins)
-      setToast({ msg: 'Admin list updated', type: 'success' })
+      const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
+      const newAdmins = logs.filter((log: any) => log.args?.role === DEFAULT_ADMIN_ROLE).map((log: any) => log.args?.account).filter(Boolean)
+      if (newAdmins.length) {
+        const currentList = await getAdminList()
+        const updatedAdmins = [...new Set([...currentList, ...newAdmins])]
+        await saveAdminList(updatedAdmins)
+        setAdminList(updatedAdmins)
+        setToast({ msg: 'Admin list updated', type: 'success' })
+      }
     },
   })
 
   useWatchContractEvent({
-    address: addresses.ADMIN_REGISTRY as any,
-    abi: abis.AdminRegistry as any,
-    eventName: 'AdminRemoved',
+    address: addresses.DONATE_ON_CHAIN as any,
+    abi: abis.DonateOnChain as any,
+    eventName: 'RoleRevoked',
     onLogs: async (logs) => {
-      const removedAdmins = logs.map((log: any) => log.args?.admin).filter(Boolean)
-      const currentList = await getAdminList()
-      const updatedAdmins = currentList.filter((admin: string) => 
-        !removedAdmins.some((removed: string) => removed.toLowerCase() === admin.toLowerCase())
-      )
-      await saveAdminList(updatedAdmins)
-      setAdminList(updatedAdmins)
+      const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
+      const removedAdmins = logs.filter((log: any) => log.args?.role === DEFAULT_ADMIN_ROLE).map((log: any) => log.args?.account).filter(Boolean)
+      if (removedAdmins.length) {
+        const currentList = await getAdminList()
+        const updatedAdmins = currentList.filter((admin: string) =>
+          !removedAdmins.some((removed: string) => removed.toLowerCase() === admin.toLowerCase())
+        )
+        await saveAdminList(updatedAdmins)
+        setAdminList(updatedAdmins)
+      }
     },
   })
 
@@ -281,32 +280,18 @@ const AdminPage = () => {
   }
 
   useWatchContractEvent({
-    address: addresses.NGO_REGISTRY as any,
-    abi: abis.NGORegistry as any,
-    eventName: 'NGORegistrationRequested',
+    address: addresses.DONATE_ON_CHAIN as any,
+    abi: abis.DonateOnChain as any,
+    eventName: 'AccountVerified',
     onLogs: async () => {
       await refreshLists()
-      setToast({ msg: 'New NGO registration request received.', type: 'success' })
+      setToast({ msg: 'Account verified.', type: 'success' })
     },
   })
-
-  useWatchContractEvent({
-    address: addresses.DESIGNER_REGISTRY as any,
-    abi: abis.DesignerRegistry as any,
-    eventName: 'DesignerRegistrationRequested',
-    onLogs: async () => {
-      await refreshLists()
-      setToast({ msg: 'New designer registration request received.', type: 'success' })
-    },
-  })
-
-  const isOwner = isConnected && owner && address && owner.toLowerCase() === address.toLowerCase()
 
   useEffect(() => {
-    if (isAdmin || isOwner) {
-      loadAdminStats()
-    }
-  }, [allNgoApplications, allDesignerApplications, isAdmin, isOwner])
+    loadAdminStats()
+  }, [allNgoApplications, allDesignerApplications])
 
   const handleApproveDesigner = async (designerWallet: string) => {
     setIsProcessing(true)
@@ -406,7 +391,6 @@ const AdminPage = () => {
 
   return (
     <div>
-      <Header />
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded shadow ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           <div className="flex items-center gap-3">
@@ -418,8 +402,7 @@ const AdminPage = () => {
       <section className="px-4 md:px-7 py-12 max-w-6xl mx-auto">
         <h1 className="text-3xl md:text-4xl font-bold text-black mb-8">Admin Console</h1>
 
-        {(isAdmin || isOwner) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
             <div className="bg-black rounded-lg p-6 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setShowCampaignsDesignsModal(true)}>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-white text-sm font-medium">Campaigns & Designs</h3>
@@ -472,11 +455,9 @@ const AdminPage = () => {
               <p className="text-white text-3xl md:text-4xl font-bold">{adminStats.totalOrders}</p>
             </div>
           </div>
-        )}
 
-        {isOwner && (
-          <div className="mb-10 border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+        <div className="mb-10 border rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Owner Controls</h2>
               <Button variant="secondary" size="sm" onClick={() => setShowAdminListModal(true)}>Manage Admins</Button>
             </div>
@@ -516,11 +497,9 @@ const AdminPage = () => {
                 }
               }}>Remove Admin</Button>
             </div>
-          </div>
-        )}
+        </div>
 
-        {isAdmin && (
-          <div className="space-y-10">
+        <div className="space-y-10">
             <div className="border rounded-xl p-6">
               <h2 className="text-xl font-semibold mb-4">NGO Applications</h2>
               
@@ -749,13 +728,9 @@ const AdminPage = () => {
               </div>
             </div>
           </div>
-        )}
 
         {!isConnected && (
           <p className="text-gray-600">Connect wallet to access admin console.</p>
-        )}
-        {isConnected && !isOwner && !isAdmin && (
-          <p className="text-gray-600">You do not have admin access.</p>
         )}
       </section>
 
@@ -1671,7 +1646,6 @@ const AdminPage = () => {
         </div>
       )}
 
-      <Footer />
     </div>
   )
 }

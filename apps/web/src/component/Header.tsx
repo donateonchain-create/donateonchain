@@ -9,7 +9,7 @@ import { read as readOnchain } from '../onchain/client'
 import { products, campaigns, causes, creators } from '../data/databank'
 import { useAppKit } from '@reown/appkit/react'
 import { useAccount, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
-import { hederaTestnet } from '../config/reownConfig'
+import { hederaTestnet, hederaMainnet } from '../config/reownConfig'
 import { getUserRoles } from '../onchain/adapter'
 
 const Header = () => {
@@ -186,8 +186,8 @@ const Header = () => {
     }
 
     const networks = [
-      
         { id: hederaTestnet.id, name: 'Hedera Testnet' },
+        { id: hederaMainnet.id, name: 'Hedera Mainnet' },
     ]
 
     useEffect(() => {
@@ -224,9 +224,8 @@ const Header = () => {
         const loadRole = async () => {
             try {
                 if (!address) { setShowAdmin(false); return }
-                const owner = await readOnchain<string>({ address: addresses.ADMIN_REGISTRY as `0x${string}`, abi: abis.AdminRegistry as any, functionName: 'owner' })
-                if (owner && address && owner.toLowerCase() === address.toLowerCase()) { setShowAdmin(true); return }
-                const isAdmin = await readOnchain<boolean>({ address: addresses.ADMIN_REGISTRY as `0x${string}`, abi: abis.AdminRegistry as any, functionName: 'isAdmin', args: [address] })
+                const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
+                const isAdmin = await readOnchain<boolean>({ address: addresses.DONATE_ON_CHAIN as `0x${string}`, abi: abis.DonateOnChain as any, functionName: 'hasRole', args: [DEFAULT_ADMIN_ROLE, address] })
                 setShowAdmin(Boolean(isAdmin))
             } catch {
                 setShowAdmin(false)
