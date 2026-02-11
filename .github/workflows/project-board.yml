@@ -41,7 +41,7 @@ jobs:
 
       - name: Move to Done
         if: github.event.action == 'closed'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             console.log('Issue/PR closed, should move to Done column');
@@ -50,7 +50,7 @@ jobs:
 
       - name: Label based on milestone
         if: github.event.issue || github.event.pull_request
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const item = context.payload.issue || context.payload.pull_request;
