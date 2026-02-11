@@ -173,10 +173,6 @@ const BecomeaDesigner = () => {
             }
 
             const pc = publicClient()
-            if (!pc) {
-                setToast({ msg: 'Unable to connect to network', type: 'error' })
-                return
-            }
             const bal = await pc.getBalance({ address })
             if (bal === 0n) {
                 setToast({ msg: 'Fund your Hedera Testnet account, then retry.', type: 'error' })
@@ -243,8 +239,8 @@ const BecomeaDesigner = () => {
                 try {
                     const isKyc = await read<boolean>({ address: addresses.DONATE_ON_CHAIN as any, abi: abis.DonateOnChain as any, functionName: 'isKycVerified', args: [address] })
                     if (isKyc) needsOnChainRegistration = false
-                } catch (_checkError) {
-                    //
+                } catch (checkError) {
+                    
                 }
 
                 if (needsOnChainRegistration) {
