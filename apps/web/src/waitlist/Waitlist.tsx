@@ -11,6 +11,7 @@ import Banner1Img from '../assets/banner1img.png'
 
 import FooterLogoWhite from '../assets/FooterLogoWhite.png'
 import Button from '../component/Button'
+import { getWaitlistEntryByEmail, saveWaitlistEntry } from './waitlistFirebase'
 
 const Waitlist = () => {
     const sectionRef = useRef<HTMLElement>(null)
@@ -30,6 +31,7 @@ const Waitlist = () => {
     const [emailError, setEmailError] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
+    const [joinError, setJoinError] = useState('')
 
     const validateEmail = (email: string): boolean => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -61,13 +63,13 @@ const Waitlist = () => {
         const handleScroll = () => {
             const currentScrollY = window.scrollY
             setScrollY(currentScrollY)
-            
+
             if (currentScrollY > lastScrollY) {
                 setScrollDirection('down')
             } else if (currentScrollY < lastScrollY) {
                 setScrollDirection('up')
             }
-            
+
             if (secondHeaderRef.current) {
                 if (secondHeaderOriginalTop === null) {
                     setSecondHeaderOriginalTop(secondHeaderRef.current.offsetTop)
@@ -79,7 +81,7 @@ const Waitlist = () => {
                     }
                 }
             }
-            
+
             setLastScrollY(currentScrollY)
         }
 
@@ -124,7 +126,7 @@ const Waitlist = () => {
                 if (entry.isIntersecting && !headerAnimated) {
                     headerAnimated = true
                     setHeaderVisible(true)
-                    
+
                     setTimeout(() => {
                         if (step1Ref.current) {
                             setStep1Visible(true)
@@ -203,14 +205,20 @@ const Waitlist = () => {
         if (email.trim() && role && validateEmail(email)) {
             setIsSubmitting(true)
             try {
-                console.log('Joined waitlist:', { email, role })
-                await new Promise(resolve => setTimeout(resolve, 1000))
-                setEmail('')
-                setRole('')
-                setEmailError('')
-                setShowSuccessModal(true)
+                setJoinError('')
+                const existing = await getWaitlistEntryByEmail(email)
+                if (existing) {
+                    setJoinError('This email has already joined the waitlist.')
+                    setShowSuccessModal(false)
+                } else {
+                    await saveWaitlistEntry(email, role)
+                    setEmail('')
+                    setRole('')
+                    setEmailError('')
+                    setShowSuccessModal(true)
+                }
             } catch (error) {
-                console.error('Error submitting waitlist:', error)
+                setJoinError('Something went wrong. Please try again.')
             } finally {
                 setIsSubmitting(false)
             }
@@ -230,19 +238,19 @@ const Waitlist = () => {
         const sectionTop = sectionRef.current.offsetTop
         const windowHeight = window.innerHeight
         const sectionStart = sectionTop - windowHeight * 0.7
-        
+
         const wordDelay = 20
         const animationDuration = 100
         const scrollProgress = scrollY - sectionStart
         const wordTrigger = index * wordDelay
-        
+
         if (scrollDirection === 'down') {
             if (scrollProgress >= wordTrigger) {
                 const progress = Math.min(Math.max((scrollProgress - wordTrigger) / animationDuration, 0), 1)
-                const easedProgress = progress < 0.5 
-                    ? 2 * progress * progress 
+                const easedProgress = progress < 0.5
+                    ? 2 * progress * progress
                     : 1 - Math.pow(-2 * progress + 2, 2) / 2
-                
+
                 return {
                     color: easedProgress > 0.4 ? '#FCD34D' : '#000000',
                     opacity: 0.6 + (easedProgress * 0.4),
@@ -257,10 +265,10 @@ const Waitlist = () => {
         } else if (scrollDirection === 'up') {
             if (scrollProgress >= wordTrigger) {
                 const progress = Math.min(Math.max((scrollProgress - wordTrigger) / animationDuration, 0), 1)
-                const easedProgress = progress < 0.5 
-                    ? 2 * progress * progress 
+                const easedProgress = progress < 0.5
+                    ? 2 * progress * progress
                     : 1 - Math.pow(-2 * progress + 2, 2) / 2
-                
+
                 return {
                     color: easedProgress > 0.4 ? '#FCD34D' : '#000000',
                     opacity: 0.6 + (easedProgress * 0.4),
@@ -273,7 +281,7 @@ const Waitlist = () => {
                 transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
             }
         }
-        
+
         return {
             color: '#000000',
             opacity: 0.6,
@@ -346,13 +354,13 @@ const Waitlist = () => {
             </header>
 
             <div ref={heroRef} className="relative h-screen w-full">
-                <div 
+                <div
                     className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
                     style={{ backgroundImage: `url(${WaitlistImg})` }}
                 >
                     <div className="absolute inset-0 bg-black/40"></div>
                 </div>
-                
+
                 <div className="relative z-10 h-full flex items-end justify-start px-4 sm:px-6 lg:px-8 pb-16 lg:pb-20">
                     <div className="max-w-4xl w-full">
                         <div className="space-y-6 mb-8 transition-all duration-1000 ease-out" style={{
@@ -367,7 +375,7 @@ const Waitlist = () => {
                                 <br />
                                 <span className="text-white">Built </span><span className="text-[#FFC33F]">on-chain.</span>
                             </h1>
-                            
+
                             <p className="text-lg sm:text-xl text-white/90 max-w-2xl">
                                 Buy creative products, support verified causes, and track every donation on-chain.
                             </p>
@@ -399,10 +407,10 @@ const Waitlist = () => {
                 </div>
             </div>
 
-            <header 
-                ref={secondHeaderRef} 
+            <header
+                ref={secondHeaderRef}
                 className={`w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 transition-all duration-800 ease-out z-30 ${isSecondHeaderSticky ? 'fixed top-0 left-0 right-0' : 'relative'}`}
-                style={{ 
+                style={{
                     backgroundColor: '#1E1E1E',
                     opacity: secondHeaderVisible ? 1 : 0,
                     transform: secondHeaderVisible ? 'translateY(0)' : 'translateY(30px)'
@@ -419,7 +427,7 @@ const Waitlist = () => {
                             }}
                         />
                     </div>
-                    
+
                     <nav className="hidden md:flex items-center gap-8 lg:gap-12 flex-1 justify-center">
                         <button
                             onClick={() => {
@@ -496,7 +504,7 @@ const Waitlist = () => {
             <section ref={howItWorksRef} className="w-full bg-white py-16 sm:py-20 lg:py-24">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-12">
-                        <div 
+                        <div
                             className="mb-8 inline-block transition-all duration-700 ease-out"
                             style={{
                                 opacity: headerVisible ? 1 : 0,
@@ -507,7 +515,7 @@ const Waitlist = () => {
                                 How It Works
                             </div>
                         </div>
-                        <h2 
+                        <h2
                             className="font-semibold text-black transition-all duration-700 ease-out delay-100 text-2xl sm:text-[32px]"
                             style={{
                                 opacity: headerVisible ? 1 : 0,
@@ -519,7 +527,7 @@ const Waitlist = () => {
                     </div>
 
                     <div className="space-y-6 sm:space-y-8">
-                        <div 
+                        <div
                             ref={step1Ref}
                             data-step="1"
                             className="relative rounded-[15px] overflow-hidden transition-all duration-1000 ease-out p-6 sm:p-8 lg:p-10 flex items-start sm:items-end justify-start"
@@ -532,9 +540,9 @@ const Waitlist = () => {
                             }}
                         >
                             <div className="absolute inset-0 pointer-events-none" style={{ padding: 0 }}>
-                                <img 
-                                    src={Banner1Img} 
-                                    alt="Banner 1" 
+                                <img
+                                    src={Banner1Img}
+                                    alt="Banner 1"
                                     className="absolute"
                                     style={{
                                         ...(isMobile ? {
@@ -563,7 +571,7 @@ const Waitlist = () => {
                             </div>
                         </div>
 
-                        <div 
+                        <div
                             ref={step2Ref}
                             data-step="2"
                             className="relative rounded-[15px] overflow-hidden transition-all duration-1000 ease-out p-6 sm:p-8 lg:p-10 flex items-start sm:items-end justify-start"
@@ -577,9 +585,9 @@ const Waitlist = () => {
                             }}
                         >
                             <div className="absolute inset-0 pointer-events-none" style={{ padding: 0 }}>
-                                <img 
-                                    src={Banner2Img} 
-                                    alt="Banner 2" 
+                                <img
+                                    src={Banner2Img}
+                                    alt="Banner 2"
                                     className="absolute"
                                     style={{
                                         bottom: 0,
@@ -607,7 +615,7 @@ const Waitlist = () => {
                             </div>
                         </div>
 
-                        <div 
+                        <div
                             ref={step3Ref}
                             data-step="3"
                             className="relative rounded-[15px] overflow-hidden transition-all duration-1000 ease-out p-6 sm:p-8 lg:p-10 flex items-start sm:items-end justify-start"
@@ -620,9 +628,9 @@ const Waitlist = () => {
                                 background: 'radial-gradient(95.06% 87.14% at 100% 74.94%, #3E3E3E 2.79%, #000000 100%)'
                             }}
                         >
-                            <img 
-                                src={BannerNft} 
-                                alt="Banner NFT" 
+                            <img
+                                src={BannerNft}
+                                alt="Banner NFT"
                                 className="absolute bottom-[-150px] right-[-50px]"
                                 style={{
                                     transform: `${isMobile ? 'scale(0.8)' : 'scale(1)'} rotate(-16.27deg)`,
@@ -659,7 +667,7 @@ const Waitlist = () => {
                                 Who Is Donate On Chain For
                             </div>
                         </div>
-                        <h2 className="font-semibold text-black transition-all duration-1000 ease-out text-2xl sm:text-[32px]" style={{ 
+                        <h2 className="font-semibold text-black transition-all duration-1000 ease-out text-2xl sm:text-[32px]" style={{
                             opacity: whoIsForVisible ? 1 : 0,
                             transform: whoIsForVisible ? 'translateY(0)' : 'translateY(20px)',
                             transition: 'opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 1s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -676,9 +684,9 @@ const Waitlist = () => {
                             transition: 'opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 1s cubic-bezier(0.4, 0, 0.2, 1)',
                             transitionDelay: whoIsForVisible ? '500ms' : '0ms'
                         }}>
-                            <img 
-                                src={WaitlistImg4} 
-                                alt="Donors" 
+                            <img
+                                src={WaitlistImg4}
+                                alt="Donors"
                                 className="w-full h-full object-cover"
                             />
                             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70"></div>
@@ -698,9 +706,9 @@ const Waitlist = () => {
                             transition: 'opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 1s cubic-bezier(0.4, 0, 0.2, 1)',
                             transitionDelay: whoIsForVisible ? '700ms' : '0ms'
                         }}>
-                            <img 
-                                src={WaitlistImg5} 
-                                alt="Designers / Creators" 
+                            <img
+                                src={WaitlistImg5}
+                                alt="Designers / Creators"
                                 className="w-full h-full object-cover"
                             />
                             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70"></div>
@@ -720,9 +728,9 @@ const Waitlist = () => {
                             transition: 'opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 1s cubic-bezier(0.4, 0, 0.2, 1)',
                             transitionDelay: whoIsForVisible ? '900ms' : '0ms'
                         }}>
-                            <img 
-                                src={WaitlistImg6} 
-                                alt="NGOs & Foundations" 
+                            <img
+                                src={WaitlistImg6}
+                                alt="NGOs & Foundations"
                                 className="w-full h-full object-cover"
                             />
                             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70"></div>
@@ -800,8 +808,8 @@ const Waitlist = () => {
                                 size="lg"
                                 disabled={!email.trim() || !role || !validateEmail(email) || isSubmitting}
                                 className={`rounded-lg px-8 py-4 font-medium whitespace-nowrap min-w-[180px] ${
-                                    isSubmitting 
-                                        ? 'bg-[#FFC33F]/70 hover:bg-[#FFC33F] cursor-wait' 
+                                    isSubmitting
+                                        ? 'bg-[#FFC33F]/70 hover:bg-[#FFC33F] cursor-wait'
                                         : !email.trim() || !role || !validateEmail(email)
                                         ? 'bg-gray-300 hover:bg-gray-300 cursor-not-allowed'
                                         : 'bg-[#FFC33F]/70 hover:bg-[#FFC33F]'
@@ -818,6 +826,9 @@ const Waitlist = () => {
                                 )}
                             </Button>
                         </div>
+                        {joinError && (
+                            <p className="text-red-500 text-sm">{joinError}</p>
+                        )}
                     </form>
                     </div>
 
@@ -859,9 +870,9 @@ const Waitlist = () => {
                 </div>
 
                 <div className="relative w-screen left-1/2 right-1/2 -translate-x-1/2 mb-12 lg:mb-16">
-                    <img 
-                        src={FooterLogoWhite} 
-                        alt="Donate" 
+                    <img
+                        src={FooterLogoWhite}
+                        alt="Donate"
                         className="block w-screen max-w-none select-none"
                     />
                 </div>
@@ -874,11 +885,11 @@ const Waitlist = () => {
             </footer>
 
             {showSuccessModal && (
-                <div 
+                <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
                     onClick={() => setShowSuccessModal(false)}
                 >
-                    <div 
+                    <div
                         className="bg-white rounded-2xl p-10 sm:p-16 max-w-lg w-full mx-4 shadow-xl relative min-h-[500px] flex flex-col justify-center"
                         onClick={(e) => e.stopPropagation()}
                     >

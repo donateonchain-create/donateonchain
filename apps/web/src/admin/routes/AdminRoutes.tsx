@@ -8,6 +8,7 @@ import DesignerManagement from '../pages/DesignerManagement'
 import KycReview from '../pages/KycReview'
 import Complaints from '../pages/Complaints'
 import Transactions from '../pages/Transactions'
+import WaitlistManagement from '../pages/WaitlistManagement'
 
 export const adminRoutes = (
   <Route path="/admin" element={<AdminPrivateRoute><AdminLayout /></AdminPrivateRoute>}>
@@ -19,6 +20,7 @@ export const adminRoutes = (
     <Route path="kyc-review" element={<KycReview />} />
     <Route path="complaints" element={<Complaints />} />
     <Route path="transactions" element={<Transactions />} />
+    <Route path="waitlist" element={<WaitlistManagement />} />
   </Route>
 )
 
