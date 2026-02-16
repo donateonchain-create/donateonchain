@@ -18,17 +18,17 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Label based on file changes
-        uses: actions/labeler@v5
+        uses: actions/labeler@v6
         if: github.event_name == 'pull_request'
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
 
       - name: Label size
-        uses: pascalgn/size-label-action@v0.5.4
+        uses: pascalgn/size-label-action@v0.5.5
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
