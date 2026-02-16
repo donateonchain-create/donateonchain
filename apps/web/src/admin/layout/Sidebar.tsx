@@ -27,6 +27,7 @@ const navItems = [
   { path: '/admin/kyc-review', label: 'KYC Review', icon: ShieldCheck },
   { path: '/admin/complaints', label: 'Complaints', icon: MessageSquare },
   { path: '/admin/transactions', label: 'Transactions', icon: Receipt },
+  { path: '/admin/waitlist', label: 'Waitlist', icon: Heart },
 ]
 
 interface SidebarProps {
