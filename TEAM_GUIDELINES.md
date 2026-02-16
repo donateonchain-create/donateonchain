@@ -201,7 +201,7 @@ When reviewing automated dependency PRs:
 ### Example PR Evaluation
 
 ❌ **Reject**: `chore(deps-relayer): bump viem from 2.45.1 to 2.45.2`
-- **Reason**: Patch update to critical blockchain library that is configured to ignore these updates
+- **Reason**: Patch update to critical blockchain library that should be ignored per the configuration
 - **Action**: Close the PR - Dependabot will stop creating these
 
 ✅ **Merge**: `chore(deps-frontend): bump @types/react from 19.1.15 to 19.1.16`
