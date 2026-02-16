@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -47,6 +48,55 @@ model Donation {
 
   @@index([donorAddress])
   @@index([campaignId])
+  @@index([createdAt])
+}
+
+model Campaign {
+  id              String   @id
+  ngoAddress      String
+  designerAddress String?
+  targetAmount    String
+  deadline        String
+  raisedAmount    String   @default("0")
+  vettedApproved  Boolean?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ngoAddress])
+  @@index([createdAt])
+}
+
+model Ngo {
+  address   String   @id
+  name      String?
+  kycStatus String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DonationEvent {
+  id          String   @id @default(cuid())
+  campaignId  String
+  donor       String
+  amount      String
+  txHash      String?
+  createdAt   DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([donor])
+  @@index([createdAt])
+}
+
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String
+  role      String?
+  source    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@unique([email])
   @@index([createdAt])
 }
 

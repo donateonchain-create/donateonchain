@@ -1,5 +1,6 @@
 # ---------- Builder ----------
 FROM node:20-bookworm-slim AS builder
+RUN apt-get update -y && apt-get install -y openssl
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -15,6 +16,7 @@ COPY services/api/src ./src
 
 # ---------- Runtime ----------
 FROM node:20-bookworm-slim
+RUN apt-get update -y && apt-get install -y openssl
 WORKDIR /app/services/api
 
 COPY --from=builder /app/services/api /app/services/api
