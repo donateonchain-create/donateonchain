@@ -141,6 +141,104 @@ npm run prisma:generate
 
 Use the security vulnerability issue template and mark as `security` label. For critical issues, notify the team immediately.
 
+## 📦 Dependency Management
+
+### Automated Updates (Dependabot)
+
+Dependabot is configured to automatically create PRs for dependency updates on a **monthly** schedule. Not all PRs should be merged automatically.
+
+### Update Policy by Dependency Type
+
+#### Critical Blockchain Libraries (STABLE - Security Only)
+These dependencies are critical for blockchain interactions and should remain stable:
+- **`viem`** - Web3 library for Ethereum/EVM interactions
+- **`wagmi`** - React hooks for Web3
+- **`@hashgraph/sdk`** - Hedera SDK
+- **`@hashgraph/hedera-wallet-connect`** - Wallet integration
+
+**Policy**: 
+- ❌ **Reject** minor and patch updates automatically
+- ✅ **Review carefully** for security updates only
+- ✅ **Consider** major version updates during planned upgrade cycles
+
+#### Frontend Core Libraries (MAJOR VERSION LOCKED)
+- **`react`**, **`react-dom`** - React framework
+
+**Policy**:
+- ❌ **Reject** major version updates (breaking changes)
+- ✅ **Auto-merge** minor and patch updates after CI passes
+
+#### Stable Utilities (PATCH IGNORED)
+- **`dotenv`** - Environment variables
+- **`express`** - Web framework
+- **`cors`** - CORS middleware
+- **`typescript`** - TypeScript compiler
+
+**Policy**:
+- ❌ **Ignore** patch updates (too frequent, low value)
+- ✅ **Review** minor version updates
+- ✅ **Review carefully** major version updates
+
+#### Grouped Updates
+Related packages are grouped together in single PRs:
+- **React ecosystem**: `react*`, `@types/react*`
+- **Web3 stack**: `viem`, `wagmi`, `@reown/*`
+- **Hedera packages**: `@hashgraph/*`, `hashconnect`
+- **Prisma**: `@prisma/*`, `prisma`
+- **Express ecosystem**: `express`, `cors`, `multer`
+- **GitHub Actions**: All actions grouped together
+
+### Reviewing Dependency PRs
+
+When reviewing automated dependency PRs:
+
+1. **Check the changelog** - Review what changed in the new version
+2. **Run CI** - Ensure all tests pass
+3. **Test locally** - For critical dependencies, test functionality locally
+4. **Review breaking changes** - Check for any breaking changes or migrations needed
+5. **Consider timing** - Major updates should be done during planned maintenance windows
+
+### Example PR Evaluation
+
+❌ **Reject**: `chore(deps-relayer): bump viem from 2.45.1 to 2.45.2`
+- **Reason**: Patch update to critical blockchain library that should be ignored per the configuration
+- **Action**: Close the PR - Dependabot will stop creating these
+
+✅ **Merge**: `chore(deps-frontend): bump @types/react from 19.1.15 to 19.1.16`
+- **Reason**: Patch update to TypeScript definitions, low risk
+- **Action**: Merge after CI passes
+
+⚠️ **Review Carefully**: `chore(deps): bump @hashgraph/sdk from 2.75.0 to 3.0.0`
+- **Reason**: Major version update to critical blockchain library
+- **Action**: Review changelog, test thoroughly, plan migration
+
+### Manual Dependency Updates
+
+For intentional dependency upgrades:
+
+```bash
+# Update a specific dependency
+npm install package-name@latest
+
+# Update all dependencies (use cautiously)
+npm update
+
+# Check for outdated dependencies
+npm outdated
+```
+
+### Troubleshooting
+
+**Too many Dependabot PRs?**
+- Dependabot configuration is in `.github/dependabot.yml`
+- Adjust `ignore` rules to filter out unwanted updates
+- Change `interval` from `weekly` to `monthly` to reduce frequency
+
+**Security vulnerability detected?**
+- Review the security advisory
+- Update the affected package immediately
+- Security updates bypass ignore rules
+
 ## 🏷️ Labels & Milestones
 
 ### Using Labels
