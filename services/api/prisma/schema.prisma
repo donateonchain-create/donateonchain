@@ -87,6 +87,19 @@ model DonationEvent {
   @@index([createdAt])
 }
 
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String
+  role      String?
+  source    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@unique([email])
+  @@index([createdAt])
+}
+
 model DesignIndex {
   designId    String   @id
   metadataCid String
