@@ -91,13 +91,92 @@ The `CODEOWNERS` file automatically assigns reviewers based on file paths:
 
 ## 🤖 Dependabot
 
-Automated dependency updates are configured for:
+Automated dependency updates are configured to run **monthly** to reduce PR noise while keeping dependencies reasonably up-to-date.
 
-- Root npm dependencies (Monday)
-- Frontend dependencies (Monday)
-- API dependencies (Monday)
-- Relayer dependencies (Tuesday)
-- GitHub Actions (Wednesday)
+### Update Schedule
+
+| Ecosystem | Directory | Day | PR Limit |
+|-----------|-----------|-----|----------|
+| npm (root) | `/` | Monday | 3 |
+| npm (frontend) | `/apps/web` | Monday | 3 |
+| npm (API) | `/services/api` | Monday | 3 |
+| npm (relayer) | `/services/relayer` | Tuesday | 3 |
+| GitHub Actions | `/` | Wednesday | 3 |
+
+### Update Policy
+
+#### Critical Blockchain Libraries (🔒 Stable)
+These packages are **pinned** to current versions and ignore minor/patch updates:
+- `viem` - Only security updates allowed
+- `wagmi` - Only security updates allowed
+- `@hashgraph/sdk` - No major version updates
+- `@hashgraph/hedera-wallet-connect` - No major version updates
+
+**Why?** Blockchain libraries require extensive testing. Changes can break wallet integrations or transaction logic.
+
+#### Core Framework Libraries (⚠️ Major Locked)
+- `react`, `react-dom` - No major version updates (breaking changes)
+
+#### Stable Utilities (📌 Patch Ignored)
+These packages ignore patch updates (too frequent, low impact):
+- `dotenv`, `express`, `cors`, `typescript`
+
+#### Grouped Updates
+Related packages are updated together in a single PR:
+- **React ecosystem**: `react*`, `@types/react*`
+- **Web3 stack**: `viem`, `wagmi`, `@reown/*`
+- **Hedera packages**: `@hashgraph/*`, `hashconnect`
+- **Prisma**: `@prisma/*`, `prisma`
+- **Express**: `express`, `cors`, `multer`
+- **GitHub Actions**: All actions
+
+### Handling Dependabot PRs
+
+✅ **Auto-merge** (after CI passes):
+- Type definition updates (`@types/*`)
+- Non-critical dev dependency patches
+- GitHub Actions minor updates
+
+⚠️ **Review Required**:
+- Minor version updates to core libraries
+- Any database-related updates (Prisma)
+- Updates with breaking changes noted
+
+❌ **Close/Reject**:
+- PRs that violate the ignore policy (e.g., viem patch updates)
+- Updates during feature freeze
+- Updates right before production deployments
+
+### Security Updates
+
+Security vulnerabilities **bypass all ignore rules**. These PRs should be:
+1. Reviewed immediately
+2. Tested thoroughly
+3. Merged as soon as possible
+4. Deployed to production promptly
+
+### Modifying Dependabot Config
+
+The configuration is in `.github/dependabot.yml`. To adjust:
+
+```yaml
+# Ignore specific dependency
+ignore:
+  - dependency-name: "package-name"
+    update-types: ["version-update:semver-patch"]
+
+# Change frequency
+schedule:
+  interval: "weekly"  # or "daily", "monthly"
+
+# Reduce PR limit
+open-pull-requests-limit: 3
+```
+
+After changes, validate with:
+```bash
+python3 -c "import yaml; yaml.safe_load(open('.github/dependabot.yml'))"
+```
 
 ## 🔐 Security
 
