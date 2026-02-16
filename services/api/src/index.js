@@ -4,7 +4,7 @@ import express from 'express'
 import { createPublicClient, createWalletClient, decodeEventLog, http, keccak256, stringToHex } from 'viem'
 import { hederaTestnet } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
-import { createHash } from 'crypto'
+import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import multer from 'multer'
 import pinoHttp from 'pino-http'
 import { PrismaClient } from '@prisma/client'
@@ -13,8 +13,26 @@ import { z } from 'zod'
 const prisma = new PrismaClient()
 
 const app = express()
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }))
-app.use(express.json({ limit: '2mb' }))
+const corsOrigins = (process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim()).filter(Boolean)
+const allowAllOrigins = corsOrigins.length === 0 || corsOrigins.includes('*')
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (allowAllOrigins) return callback(null, true)
+      if (!origin) return callback(null, true)
+      if (corsOrigins.includes(origin)) return callback(null, true)
+      return callback(new Error('CORS blocked'))
+    },
+  })
+)
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf
+    },
+  })
+)
 app.use(pinoHttp())
 
 const upload = multer({ storage: multer.memoryStorage() })
@@ -22,7 +40,7 @@ const upload = multer({ storage: multer.memoryStorage() })
 const adminApiKey = process.env.KYC_ADMIN_API_KEY
 
 function requireAdminApiKey(req, res, next) {
-  if (adminApiKey && req.get('x-api-key') !== adminApiKey) {
+  if (adminApiKey && !timingSafeEqualString(req.get('x-api-key'), adminApiKey)) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
   return next()
@@ -108,6 +126,14 @@ function normalizeMirrorContractIdOrAddress(value) {
   return v
 }
 
+function timingSafeEqualString(input, expected) {
+  if (!input || !expected) return false
+  const inputBuf = Buffer.from(String(input))
+  const expectedBuf = Buffer.from(String(expected))
+  if (inputBuf.length !== expectedBuf.length) return false
+  return timingSafeEqual(inputBuf, expectedBuf)
+}
+
 function getMirrorConfig() {
   const baseUrl = (process.env.MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com').replace(/\/$/, '')
   const contractsRaw = process.env.MIRROR_CONTRACTS || ''
@@ -117,7 +143,7 @@ function getMirrorConfig() {
     .filter(Boolean)
     .map(normalizeMirrorContractIdOrAddress)
 
-  const pollIntervalMs = Number(process.env.MIRROR_POLL_INTERVAL_MS || 3000)
+  const pollIntervalMs = Number(process.env.MIRROR_POLL_INTERVAL_MS || 15000)
   const startTimestamp = (process.env.MIRROR_START_TIMESTAMP || '').trim()
 
   return { baseUrl, contracts, pollIntervalMs, startTimestamp }
@@ -499,9 +525,7 @@ async function runMirrorSyncCycle() {
   mirrorSyncRunning = true
 
   try {
-    for (const contractIdOrAddress of contracts) {
-      await syncMirrorContractOnce(contractIdOrAddress)
-    }
+    await Promise.all(contracts.map((contractIdOrAddress) => syncMirrorContractOnce(contractIdOrAddress)))
   } finally {
     mirrorSyncRunning = false
   }
@@ -644,6 +668,89 @@ app.get('/api/campaigns', async (req, res) => {
   res.json({ page, limit, total, items })
 })
 
+const WaitlistCreateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email(),
+  role: z.string().min(1).max(80).optional(),
+  source: z.string().min(1).max(120).optional(),
+  metadata: z.any().optional(),
+})
+
+const WaitlistQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  email: z.string().email().optional(),
+  role: z.string().min(1).optional(),
+})
+
+app.post('/api/waitlist', async (req, res) => {
+  const parsed = WaitlistCreateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const data = parsed.data
+  const created = await prisma.waitlistEntry.upsert({
+    where: { email: data.email.toLowerCase() },
+    update: {
+      name: data.name ?? undefined,
+      role: data.role ?? undefined,
+      source: data.source ?? undefined,
+      metadata: data.metadata ?? undefined,
+    },
+    create: {
+      name: data.name ?? null,
+      email: data.email.toLowerCase(),
+      role: data.role ?? null,
+      source: data.source ?? null,
+      metadata: data.metadata ?? null,
+    },
+  })
+
+  res.status(201).json({ id: created.id, email: created.email })
+})
+
+app.get('/api/admin/waitlist', requireAdminApiKey, async (req, res) => {
+  const parsed = WaitlistQuerySchema.safeParse(req.query)
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() })
+  }
+
+  const { page = 1, limit = 50, email, role } = parsed.data
+  const where = {
+    ...(email ? { email: email.toLowerCase() } : {}),
+    ...(role ? { role } : {}),
+  }
+
+  const [items, total] = await Promise.all([
+    prisma.waitlistEntry.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.waitlistEntry.count({ where }),
+  ])
+
+  res.json({ page, limit, total, items })
+})
+
+app.get('/api/admin/waitlist/export', requireAdminApiKey, async (req, res) => {
+  const entries = await prisma.waitlistEntry.findMany({ orderBy: { createdAt: 'desc' } })
+  res.setHeader('Content-Type', 'text/csv')
+  res.setHeader('Content-Disposition', 'attachment; filename="waitlist.csv"')
+
+  const header = 'id,name,email,role,source,createdAt\n'
+  const rows = entries
+    .map((entry) => {
+      const cells = [entry.id, entry.name ?? '', entry.email, entry.role ?? '', entry.source ?? '', entry.createdAt.toISOString()]
+      return cells.map((cell) => String(cell).replace(/"/g, '""')).map((cell) => `"${cell}"`).join(',')
+    })
+    .join('\n')
+
+  res.send(`${header}${rows}`)
+})
+
 app.get('/api/campaigns/:id', async (req, res) => {
   const id = req.params.id
   const campaign = await prisma.campaign.findUnique({ where: { id } })
@@ -664,6 +771,11 @@ app.get('/api/campaigns/:id', async (req, res) => {
   })
 })
 
+app.post('/api/campaigns/sync-states', requireAdminApiKey, async (req, res) => {
+  const result = await runCampaignStateSync(req.log)
+  res.json({ ok: true, ...result })
+})
+
 app.get('/api/donations/:campaignId', async (req, res) => {
   const campaignId = req.params.campaignId
   const limit = Number(req.query.limit || 50)
@@ -677,15 +789,14 @@ app.get('/api/donations/:campaignId', async (req, res) => {
 
 app.post('/api/mirror/sync', async (req, res) => {
   const apiKey = process.env.MIRROR_ADMIN_API_KEY
-  if (apiKey && req.get('x-api-key') !== apiKey) {
+  if (apiKey && !timingSafeEqualString(req.get('x-api-key'), apiKey)) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
   const { contracts } = getMirrorConfig()
-  const results = []
-  for (const contractIdOrAddress of contracts) {
-    results.push(await syncMirrorContractOnce(contractIdOrAddress, req.log))
-  }
+  const results = await Promise.all(
+    contracts.map((contractIdOrAddress) => syncMirrorContractOnce(contractIdOrAddress, req.log))
+  )
   res.json({ ok: true, results })
 })
 
@@ -731,16 +842,23 @@ app.post('/api/orders', async (req, res) => {
 
 app.get('/api/orders', async (req, res) => {
   const buyer = typeof req.query.buyer === 'string' ? req.query.buyer : undefined
+  const page = Number(req.query.page || 1)
+  const limit = Math.min(Number(req.query.limit || 20), 100)
 
   const where = buyer ? { buyer: buyer.toLowerCase() } : {}
 
-  const orders = await prisma.order.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: { items: true },
-  })
+  const [items, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { items: true },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.order.count({ where }),
+  ])
 
-  res.json(orders)
+  res.json({ page, limit, total, items })
 })
 
 const CreateDonationSchema = z.object({
@@ -779,18 +897,25 @@ app.post('/api/donations', async (req, res) => {
 app.get('/api/donations', async (req, res) => {
   const donorAddress = typeof req.query.donorAddress === 'string' ? req.query.donorAddress : undefined
   const campaignId = typeof req.query.campaignId === 'string' ? req.query.campaignId : undefined
+  const page = Number(req.query.page || 1)
+  const limit = Math.min(Number(req.query.limit || 20), 100)
 
   const where = {
     ...(donorAddress ? { donorAddress: donorAddress.toLowerCase() } : {}),
     ...(campaignId ? { campaignId: String(campaignId) } : {}),
   }
 
-  const donations = await prisma.donation.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  })
+  const [items, total] = await Promise.all([
+    prisma.donation.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.donation.count({ where }),
+  ])
 
-  res.json(donations)
+  res.json({ page, limit, total, items })
 })
 
 const CreateKycVerificationSchema = z.object({
@@ -822,17 +947,24 @@ app.post('/api/kyc/verifications', kycRateLimit, async (req, res) => {
 
 app.get('/api/kyc/verifications', async (req, res) => {
   const walletAddress = typeof req.query.walletAddress === 'string' ? req.query.walletAddress : undefined
+  const page = Number(req.query.page || 1)
+  const limit = Math.min(Number(req.query.limit || 20), 100)
 
   const where = {
     ...(walletAddress ? { walletAddress: normalizeAddress(walletAddress) } : {}),
   }
 
-  const verifications = await prisma.kycVerification.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  })
+  const [items, total] = await Promise.all([
+    prisma.kycVerification.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.kycVerification.count({ where }),
+  ])
 
-  res.json(verifications)
+  res.json({ page, limit, total, items })
 })
 
 app.get('/api/kyc/verifications/:id', async (req, res) => {
@@ -920,6 +1052,13 @@ const DONATEONCHAIN_ABI = [
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [],
   },
+  {
+    type: 'function',
+    name: 'updateCampaignState',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'campaignId', type: 'uint256' }],
+    outputs: [],
+  },
 ]
 
 function getKycClients() {
@@ -956,16 +1095,86 @@ async function verifyAccountOnChain(walletAddress) {
   return { txHash, receipt }
 }
 
+function getCampaignSyncClients() {
+  const privateKey = process.env.CAMPAIGN_SYNC_PRIVATE_KEY
+  if (!privateKey) return null
+  const rpcUrl = process.env.CAMPAIGN_SYNC_RPC_URL || process.env.KYC_CHAIN_RPC_URL || 'https://testnet.hashio.io/api'
+  const account = privateKeyToAccount(privateKey)
+  const walletClient = createWalletClient({
+    account,
+    chain: hederaTestnet,
+    transport: http(rpcUrl),
+  })
+  const publicClient = createPublicClient({
+    chain: hederaTestnet,
+    transport: http(rpcUrl),
+  })
+  return { walletClient, publicClient }
+}
+
+async function updateCampaignStateOnChain(campaignId) {
+  const contractAddress = process.env.DONATEONCHAIN_PROXY_ADDRESS
+  const clients = getCampaignSyncClients()
+  if (!clients || !contractAddress) return { skipped: true }
+  const { walletClient, publicClient } = clients
+  const txHash = await walletClient.writeContract({
+    address: contractAddress,
+    abi: DONATEONCHAIN_ABI,
+    functionName: 'updateCampaignState',
+    args: [BigInt(campaignId)],
+  })
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+  return { txHash, receipt }
+}
+
+async function runCampaignStateSync(reqLogger) {
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  const campaigns = await prisma.campaign.findMany({
+    where: { deadline: { lt: String(nowSeconds) } },
+    select: { id: true },
+  })
+
+  const results = []
+  for (const campaign of campaigns) {
+    try {
+      const result = await updateCampaignStateOnChain(campaign.id)
+      results.push({ id: campaign.id, ...result })
+    } catch (e) {
+      reqLogger?.error?.(e, 'campaign_state_sync_failed')
+      results.push({ id: campaign.id, error: 'campaign_state_sync_failed' })
+    }
+  }
+
+  return { total: campaigns.length, results }
+}
+
 app.post('/api/kyc/webhook/:provider', async (req, res) => {
   const provider = req.params.provider
   const secret = process.env.KYC_WEBHOOK_SECRET
   const diditSecret = process.env.DIDIT_WEBHOOK_SECRET
   const headerSecret = req.get('x-webhook-secret') || req.get('x-didit-webhook-secret')
-  if (secret && headerSecret !== secret) {
+  if (secret && !timingSafeEqualString(headerSecret, secret)) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
-  if (provider === 'didit' && diditSecret && headerSecret !== diditSecret) {
+  if (provider === 'didit' && diditSecret && !timingSafeEqualString(headerSecret, diditSecret)) {
     return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const signature = req.get('x-webhook-signature')
+  const timestamp = req.get('x-webhook-timestamp')
+  const tolerance = Number(process.env.KYC_WEBHOOK_TOLERANCE_SEC || 300)
+  const webhookSecret = (provider === 'didit' ? diditSecret : secret) || ''
+  if (signature && timestamp && webhookSecret) {
+    const now = Math.floor(Date.now() / 1000)
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || Math.abs(now - ts) > tolerance) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {})
+    const expected = createHmac('sha256', webhookSecret).update(`${ts}.${rawBody}`).digest('hex')
+    if (!timingSafeEqualString(signature, expected)) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
   }
 
   const parsed = KycWebhookSchema.safeParse(req.body)
@@ -1279,6 +1488,11 @@ app.delete('/api/ipfs/unpin/:cid', async (req, res) => {
   }
 })
 
+app.use((err, req, res, _next) => {
+  req.log?.error(err, 'unhandled_error')
+  res.status(500).json({ error: 'internal_error' })
+})
+
 const PORT = Number(process.env.PORT || 3002)
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
@@ -1297,5 +1511,15 @@ app.listen(PORT, () => {
     }
 
     setTimeout(loop, 1000)
+  }
+
+  const campaignSyncInterval = Number(process.env.CAMPAIGN_SYNC_INTERVAL_MS || 3600000)
+  if (campaignSyncInterval > 0) {
+    setTimeout(() => {
+      runCampaignStateSync().catch((e) => console.error('[campaign-sync] failed', e))
+      setInterval(() => {
+        runCampaignStateSync().catch((e) => console.error('[campaign-sync] failed', e))
+      }, campaignSyncInterval)
+    }, 2000)
   }
 })
