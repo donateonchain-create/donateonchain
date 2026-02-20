@@ -8,42 +8,36 @@ import { products } from "../data/databank";
 import { useCart } from "../context/CartContext";
 import { getAllGlobalDesigns } from '../utils/firebaseStorage';
 import { getDesignPrice } from '../onchain/adapter';
+import { SkeletonCartRow } from '../component/Skeleton';
 
 const Cart = () => {
   const navigate = useNavigate();
   const { cartItems, updateQuantity, removeItem } = useCart();
   const [customDesigns, setCustomDesigns] = useState<any[]>([]);
   const [onchainPrices, setOnchainPrices] = useState<Record<number, number>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
  
   useEffect(() => {
     const loadDesigns = async () => {
+      setIsLoading(true);
       try {
-     
         const firebaseDesigns = await getAllGlobalDesigns();
-        console.log('Cart - Firebase designs loaded:', firebaseDesigns.length);
-        
-       
         const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
         const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-        
-       
         const allDesigns = [...firebaseDesigns, ...userDesigns, ...ngoDesigns];
         const uniqueDesigns = Array.from(
           new Map(allDesigns.map(design => [design.id, design])).values()
         );
-        
         setCustomDesigns(uniqueDesigns);
-        console.log('Cart - Total unique designs loaded:', uniqueDesigns.length);
       } catch (error) {
-        console.error('Error loading designs for cart:', error);
-    
         const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
         const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
         setCustomDesigns([...userDesigns, ...ngoDesigns]);
+      } finally {
+        setIsLoading(false);
       }
     };
-    
     loadDesigns();
   }, []);
 
@@ -109,8 +103,27 @@ const Cart = () => {
          
       <section className="px-4 md:px-7 py-12">
         <div className="max-w-6xl mx-auto">
-          {cartItems.length === 0 ? (
-           
+          {isLoading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2">
+                <div className="h-10 bg-gray-200 rounded w-48 mb-8 animate-pulse"></div>
+                <div className="space-y-6">
+                  {[...Array(3)].map((_, i) => (
+                    <SkeletonCartRow key={i} />
+                  ))}
+                </div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="h-10 bg-gray-200 rounded w-32 mb-8 animate-pulse"></div>
+                <div className="bg-gray-100 rounded-lg p-6 space-y-4">
+                  <div className="h-4 bg-gray-200 rounded w-full animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-full animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-full animate-pulse"></div>
+                  <div className="h-12 bg-gray-200 rounded w-full animate-pulse mt-4"></div>
+                </div>
+              </div>
+            </div>
+          ) : cartItems.length === 0 ? (
             <div className="text-center py-20">
               <h1 className="text-3xl font-bold text-black mb-8">
                 Shopping bag

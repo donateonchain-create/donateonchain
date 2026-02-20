@@ -10,6 +10,7 @@ import { ChevronDown, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { getUserDesigns, getNGODesigns, getAllGlobalDesigns, getDesignIndex } from '../utils/firebaseStorage'
 import { getDesignById, getDesignPrice } from '../onchain/adapter'
+import { SkeletonProductDetail, SkeletonCard } from '../component/Skeleton'
 
 const ProductPage = () => {
     const { id } = useParams<{ id: string }>()
@@ -25,6 +26,7 @@ const ProductPage = () => {
     const [currentImageView, setCurrentImageView] = useState<'front' | 'back'>('front')
     const [isMyDesign, setIsMyDesign] = useState(false)
     const [profileName, setProfileName] = useState<string>('')
+    const [isLoading, setIsLoading] = useState(true)
     const { addToCart } = useCart()
 
     useEffect(() => {
@@ -56,21 +58,22 @@ const ProductPage = () => {
                 }
                 setCustomDesign(assembled)
                 setAvailableQuantity(9999)
+                setIsLoading(false)
             } catch {}
         }
         const loadDesign = async () => {
-            if (!id) return
+            if (!id) { setIsLoading(false); return }
+            setIsLoading(true)
             await loadFromOnchain()
-            if (customDesign) return
             const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
             const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
             const allDesigns = [...userDesigns, ...ngoDesigns]
             const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundDesign) { setCustomDesign(foundDesign); const qty = foundDesign.quantity || foundDesign.maxQuantity || 0; setAvailableQuantity(qty); return }
+            if (foundDesign) { setCustomDesign(foundDesign); const qty = foundDesign.quantity || foundDesign.maxQuantity || 0; setAvailableQuantity(qty); setIsLoading(false); return }
             try {
                 const allFirebaseDesigns = await getAllGlobalDesigns()
                 const foundFirebaseDesign = allFirebaseDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                if (foundFirebaseDesign) { setCustomDesign(foundFirebaseDesign); return }
+                if (foundFirebaseDesign) { setCustomDesign(foundFirebaseDesign); setIsLoading(false); return }
                 if (address && isConnected) {
                     const userDesignsFirebase = await getUserDesigns(address)
                     const ngoDesignsFirebase = await getNGODesigns(address)
@@ -79,6 +82,7 @@ const ProductPage = () => {
                     if (foundOwnDesign) { setCustomDesign(foundOwnDesign) }
                 }
             } catch {}
+            setIsLoading(false)
         }
         loadDesign()
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,6 +153,25 @@ const ProductPage = () => {
         }
     }
     const handleCancelDelete = () => { setShowDeleteModal(false) }
+
+    if (isLoading) {
+        return (
+            <div>
+                <Header />
+                <section className="px-4 md:px-7 py-12">
+                    <SkeletonProductDetail />
+                </section>
+                <section className="px-4 md:px-7 py-12">
+                    <div className="h-8 bg-gray-200 rounded w-64 mb-8 animate-pulse"></div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                        {[...Array(5)].map((_, i) => <SkeletonCard key={i} />)}
+                    </div>
+                </section>
+                <Banner />
+                <Footer />
+            </div>
+        )
+    }
 
     return (
         <div>

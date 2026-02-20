@@ -1,7 +1,7 @@
 import Header from "../component/Header";
 import Footer from "../component/Footer";
 import Button from "../component/Button";
-import { SkeletonProfile } from "../component/Skeleton";
+import { SkeletonProfile, SkeletonCard } from "../component/Skeleton";
 import { Plus, X, Camera, Copy, Check, Loader2, XCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -690,9 +690,10 @@ const UserProfile = () => {
                     {activeCategory === 'NFTs' && (
                         <div className="mb-40">
                             {isLoadingNfts ? (
-                                <div className="text-center py-12">
-                                    <div className="text-6xl mb-4 animate-pulse">🎫</div>
-                                    <h3 className="text-xl font-semibold text-gray-600 mb-2">Loading your NFTs…</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {[...Array(6)].map((_, i) => (
+                                        <SkeletonCard key={i} />
+                                    ))}
                                 </div>
                             ) : myNfts.length === 0 ? (
                                 <div className="text-center py-12">

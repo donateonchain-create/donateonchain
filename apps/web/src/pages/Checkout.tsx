@@ -10,6 +10,7 @@ import { useAccount } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
 import { saveDonation, getAllGlobalDesigns, saveOrder } from '../utils/firebaseStorage'
 import { getDesignPrice, batchPurchaseDesignsPayable } from '../onchain/adapter'
+import { SkeletonCheckoutOverview } from '../component/Skeleton'
 
 const Checkout = () => {
     const navigate = useNavigate()
@@ -21,12 +22,14 @@ const Checkout = () => {
     const [showConnectWalletModal, setShowConnectWalletModal] = useState(false)
     const [showOwnDesignError, setShowOwnDesignError] = useState(false)
     const [customDesigns, setCustomDesigns] = useState<any[]>([])
+    const [designsLoading, setDesignsLoading] = useState(true)
     const [formData, setFormData] = useState({
         email: '', firstName: '', lastName: '', country: 'Nigeria', city: '', address: '', paymentMethod: ''
     })
    
     useEffect(() => {
         const loadDesigns = async () => {
+            setDesignsLoading(true)
             try {
                 const firebaseDesigns = await getAllGlobalDesigns();
                 const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
@@ -38,6 +41,8 @@ const Checkout = () => {
                 const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
                 const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
                 setCustomDesigns([...userDesigns, ...ngoDesigns])
+            } finally {
+                setDesignsLoading(false)
             }
         }
         loadDesigns()
@@ -205,7 +210,9 @@ const Checkout = () => {
                         <div>
                             <h2 className="text-3xl font-bold text-black mb-8">Overview</h2>
                             <div className="space-y-4">
-                                {cartItems.length > 0 ? (
+                                {designsLoading ? (
+                                    <SkeletonCheckoutOverview />
+                                ) : cartItems.length > 0 ? (
                                     cartItems.map((item, index) => {
                                         const product = getProductById(item.id)
                                         if (!product) return null

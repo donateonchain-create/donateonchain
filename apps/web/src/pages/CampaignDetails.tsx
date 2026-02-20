@@ -8,6 +8,7 @@ import CampaignCard from '../component/CampaignCard'
 import Button from '../component/Button'
 import EditCampaignModal from '../component/EditCampaignModal'
 import { Loader2, Check, Gift, Trash } from 'lucide-react'
+import { SkeletonCampaignDetail } from '../component/Skeleton'
 import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
 import { uploadFileToIPFS } from '../utils/ipfs';
 
@@ -151,12 +152,9 @@ const CampaignDetails = () => {
         return (
             <div>
                 <Header />
-                <div className="min-h-screen flex items-center justify-center">
-                    <div className="text-center">
-                        <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-black" />
-                        <h1 className="text-xl font-semibold">Loading campaign...</h1>
-                    </div>
-                </div>
+                <section className="px-4 md:px-7 py-12">
+                    <SkeletonCampaignDetail />
+                </section>
                 <Footer />
             </div>
         )
