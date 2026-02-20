@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx tsc -b && npx vite build --mode production",
+    "build": "node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite build --mode production",
     "build:netlify": "npm ci --legacy-peer-deps && npm run build",
     "lint": "eslint .",
     "preview": "vite preview",
