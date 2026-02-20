@@ -5,6 +5,7 @@ import { useAppKit } from '@reown/appkit/react'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
+import { SkeletonFormApplication } from '../component/Skeleton'
 import { Upload, CheckCircle, Clock, X, ChevronDown } from 'lucide-react'
 import { saveDesignerApplication, getDesignerApplicationByWallet, deleteDesignerApplication } from '../utils/firebaseStorage'
 import { designerRegisterPending } from '../onchain/adapter'
@@ -20,15 +21,17 @@ const BecomeaDesigner = () => {
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
     const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [existingDesignerData, setExistingDesignerData] = useState<any>(null)
-    
+    const [isLoadingApplication, setIsLoadingApplication] = useState(true)
+
     useEffect(() => {
         const checkExistingApplication = async () => {
             if (!isConnected || !address) {
                 setHasAlreadyApplied(false)
                 setExistingDesignerData(null)
+                setIsLoadingApplication(false)
                 return
             }
-            
+            setIsLoadingApplication(true)
             try {
                 const firebaseApplication = await getDesignerApplicationByWallet(address)
                 if (firebaseApplication) {
@@ -36,25 +39,35 @@ const BecomeaDesigner = () => {
                     setExistingDesignerData(firebaseApplication)
                     return
                 }
+                const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                const userDesigner = designers.find((designer: any) =>
+                    designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    designer.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userDesigner) {
+                    setHasAlreadyApplied(true)
+                    setExistingDesignerData(userDesigner)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingDesignerData(null)
+                }
             } catch (error) {
-                console.error('Error checking Firebase for designer application:', error)
-            }
-            
-            const designers = JSON.parse(localStorage.getItem('designers') || '[]')
-            const userDesigner = designers.find((designer: any) => 
-                designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                designer.walletAddress?.toLowerCase() === address.toLowerCase()
-            )
-            
-            if (userDesigner) {
-                setHasAlreadyApplied(true)
-                setExistingDesignerData(userDesigner)
-            } else {
-                setHasAlreadyApplied(false)
-                setExistingDesignerData(null)
+                const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                const userDesigner = designers.find((designer: any) =>
+                    designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    designer.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userDesigner) {
+                    setHasAlreadyApplied(true)
+                    setExistingDesignerData(userDesigner)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingDesignerData(null)
+                }
+            } finally {
+                setIsLoadingApplication(false)
             }
         }
-        
         checkExistingApplication()
     }, [address, isConnected])
 
@@ -314,6 +327,10 @@ const BecomeaDesigner = () => {
                 </div>
             )}
             
+            {isConnected && isLoadingApplication && (
+                <SkeletonFormApplication />
+            )}
+
             {!isConnected && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
@@ -501,7 +518,7 @@ const BecomeaDesigner = () => {
                 </section>
             )}
 
-            {isConnected && !hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && (
                 <section className="px-4 md:px-7 py-12 bg-gray-50">
                     <div className="max-w-4xl mx-auto">
                 

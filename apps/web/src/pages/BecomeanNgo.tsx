@@ -5,6 +5,7 @@ import { useAppKit } from '@reown/appkit/react'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
+import { SkeletonFormApplication } from '../component/Skeleton'
 import { ChevronDown, Upload, CheckCircle, Clock } from 'lucide-react'
 import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/firebaseStorage'
 import { ngoRegisterPending } from '../onchain/adapter'
@@ -18,19 +19,19 @@ const BecomeanNgo = () => {
     const chainId = useChainId()
     const { open } = useAppKit()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
+const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [existingNgoData, setExistingNgoData] = useState<any>(null)
-    
- 
+    const [isLoadingApplication, setIsLoadingApplication] = useState(true)
+
     useEffect(() => {
         const checkExistingApplication = async () => {
             if (!isConnected || !address) {
                 setHasAlreadyApplied(false)
                 setExistingNgoData(null)
+                setIsLoadingApplication(false)
                 return
             }
-            
-           
+            setIsLoadingApplication(true)
             try {
                 const firebaseApplication = await getNgoApplicationByWallet(address)
                 if (firebaseApplication) {
@@ -38,27 +39,35 @@ const BecomeanNgo = () => {
                     setExistingNgoData(firebaseApplication)
                     return
                 }
+                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const userNgo = ngos.find((ngo: any) =>
+                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userNgo) {
+                    setHasAlreadyApplied(true)
+                    setExistingNgoData(userNgo)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingNgoData(null)
+                }
             } catch (_error) {
-                console.error('Error checking Firebase for NGO application:', _error)
-            }
-            
-            
-            const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
-           
-            const userNgo = ngos.find((ngo: any) => 
-                ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                ngo.walletAddress?.toLowerCase() === address.toLowerCase()
-            )
-            
-            if (userNgo) {
-                setHasAlreadyApplied(true)
-                setExistingNgoData(userNgo)
-            } else {
-                setHasAlreadyApplied(false)
-                setExistingNgoData(null)
+                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const userNgo = ngos.find((ngo: any) =>
+                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userNgo) {
+                    setHasAlreadyApplied(true)
+                    setExistingNgoData(userNgo)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingNgoData(null)
+                }
+            } finally {
+                setIsLoadingApplication(false)
             }
         }
-        
         checkExistingApplication()
     }, [address, isConnected])
 
@@ -345,6 +354,10 @@ const BecomeanNgo = () => {
             )}
             
           
+            {isConnected && isLoadingApplication && (
+                <SkeletonFormApplication />
+            )}
+
             {!isConnected && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
@@ -372,7 +385,7 @@ const BecomeanNgo = () => {
             )}
 
           
-            {isConnected && hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && hasAlreadyApplied && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
                         <div className="bg-white rounded-2xl p-8 md:p-12 text-center shadow-sm">
@@ -544,7 +557,7 @@ const BecomeanNgo = () => {
             )}
 
           
-            {isConnected && !hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && (
                 <section className="px-4 md:px-7 py-12 bg-gray-50">
                 <div className="max-w-4xl mx-auto">
                 

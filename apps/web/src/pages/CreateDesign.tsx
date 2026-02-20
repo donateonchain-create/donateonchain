@@ -296,9 +296,21 @@ const CreateDesign = () => {
                             </div>
                             <div className="max-h-80 overflow-auto divide-y rounded-lg border">
                                 {isLoadingCampaigns && campaigns.length === 0 && (
-                                    <div className="p-6 text-center text-gray-500">Loading campaigns...</div>
+                                    <div className="p-6">
+                                        <div className="space-y-4">
+                                            {[...Array(4)].map((_, i) => (
+                                                <div key={i} className="flex items-start gap-3 p-3">
+                                                    <div className="w-12 h-12 rounded-md bg-gray-200 animate-pulse flex-shrink-0"></div>
+                                                    <div className="flex-1 space-y-2">
+                                                        <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+                                                        <div className="h-3 bg-gray-200 rounded w-full animate-pulse"></div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
-                                {campaigns.filter(c => (campaignCategoryFilter === 'all' || (c.category || '').toLowerCase() === campaignCategoryFilter.toLowerCase())).filter(c => c.title.toLowerCase().includes(campaignSearch.toLowerCase()) || c.description.toLowerCase().includes(campaignSearch.toLowerCase())).map(c => {
+                                {!isLoadingCampaigns && campaigns.filter(c => (campaignCategoryFilter === 'all' || (c.category || '').toLowerCase() === campaignCategoryFilter.toLowerCase())).filter(c => c.title.toLowerCase().includes(campaignSearch.toLowerCase()) || c.description.toLowerCase().includes(campaignSearch.toLowerCase())).map(c => {
                                     const campaignId = c.onchainId || c.id
                                     return (
                                     <button key={campaignId} className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${selectedCampaignId === campaignId ? 'bg-gray-100' : ''}`} onClick={() => setSelectedCampaignId(campaignId)}>
@@ -316,7 +328,9 @@ const CreateDesign = () => {
                                         </div>
                         </button>
                                 )})}
-                                {!isLoadingCampaigns && campaigns.length === 0 && (<div className="p-6 text-center text-gray-500">No campaigns found</div>)}
+                                {!isLoadingCampaigns && campaigns.length === 0 && (
+                                    <div className="p-6 text-center text-gray-500">No campaigns found</div>
+                                )}
                             </div>
                     </div>
                     )}
