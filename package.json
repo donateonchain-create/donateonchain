@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Hedera donation contract with NFT proof-of-donation",
   "scripts": {
-    "build": "npm run build --prefix apps/web",
+    "build": "cd apps/web && npm install && npm run build",
     "dev": "npm run dev --prefix apps/web",
     "setup-hedera": "node setup/setup-hedera.js",
     "configure-token": "node setup/configure-token-permissions.js",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@hashgraph/hedera-wallet-connect": "^2.0.3",
-    "@walletconnect/modal": "^2.7.0"
+    "@walletconnect/modal": "^2.7.0",
+    "typescript": "^5.9.3"
   }
 }

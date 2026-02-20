@@ -9,7 +9,6 @@ import {
   EmptyState,
   Pagination,
   ProgressBar,
-  WalletCopy,
 } from '../components/management'
 import type { ColumnDef } from '../components/management'
 import { managementCampaigns } from '../data/databank'
