@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Hedera donation contract with NFT proof-of-donation",
   "scripts": {
+    "build": "npm run build --prefix apps/web",
     "dev": "npm run dev --prefix apps/web",
     "setup-hedera": "node setup/setup-hedera.js",
     "configure-token": "node setup/configure-token-permissions.js",
