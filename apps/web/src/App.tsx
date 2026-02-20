@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import Home from './pages/Home'
@@ -22,7 +22,9 @@ import ProfileSetupModal from './component/ProfileSetupModal'
 import PrivateRoute from './component/PrivateRoute'
 import { getUserProfile, getNgoProfile } from './utils/firebaseStorage'
 
-const AppContent = () => {
+const WAITLIST_MODE = import.meta.env.VITE_WAITLIST_MODE === "true"
+
+const MainAppRoutes = () => {
     const location = useLocation()
     const { isConnected, address } = useAccount()
     const [showProfileSetup, setShowProfileSetup] = useState(false)
@@ -31,11 +33,8 @@ const AppContent = () => {
     const isAdminPage = location.pathname.startsWith('/admin')
 
     useEffect(() => {
-        console.log('App component rendered')
-    }, [])
-
-    useEffect(() => {
         const checkProfileExists = async () => {
+            if (location.pathname === '/waitlist') return
             if (isConnected && address) {
                 const sessionKey = `profileSetupShown_${address}`
                 const shownThisSession = sessionStorage.getItem(sessionKey)
@@ -106,7 +105,7 @@ const AppContent = () => {
         }
         
         checkProfileExists()
-    }, [isConnected, address])
+    }, [isConnected, address, location.pathname])
 
     const handleCloseProfileSetup = () => {
         setShowProfileSetup(false)
@@ -120,7 +119,7 @@ const AppContent = () => {
         <>
             {!isWaitlistPage && !isAdminPage && <Header />}
             <ScrollToTop />
-            <ProfileSetupModal isOpen={showProfileSetup} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
+            <ProfileSetupModal isOpen={showProfileSetup && !isWaitlistPage} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
             <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/shop" element={<Shop />} />
@@ -145,7 +144,14 @@ const App = () => {
     return (
         <CartProvider>
             <Router>
-                <AppContent />
+                {WAITLIST_MODE ? (
+                    <Routes>
+                        <Route path="/waitlist" element={<Waitlist />} />
+                        <Route path="*" element={<Navigate to="/waitlist" replace />} />
+                    </Routes>
+                ) : (
+                    <MainAppRoutes />
+                )}
             </Router>
         </CartProvider>
     )
