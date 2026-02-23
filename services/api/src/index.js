@@ -1152,19 +1152,14 @@ app.post('/api/kyc/webhook/:provider', async (req, res) => {
   const provider = req.params.provider
   const secret = process.env.KYC_WEBHOOK_SECRET
   const diditSecret = process.env.DIDIT_WEBHOOK_SECRET
-  const headerSecret = req.get('x-webhook-secret') || req.get('x-didit-webhook-secret')
-  if (secret && !timingSafeEqualString(headerSecret, secret)) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-  if (provider === 'didit' && diditSecret && !timingSafeEqualString(headerSecret, diditSecret)) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
   const signature = req.get('x-webhook-signature')
   const timestamp = req.get('x-webhook-timestamp')
   const tolerance = Number(process.env.KYC_WEBHOOK_TOLERANCE_SEC || 300)
   const webhookSecret = (provider === 'didit' ? diditSecret : secret) || ''
-  if (signature && timestamp && webhookSecret) {
+  if (webhookSecret) {
+    if (!signature || !timestamp) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
     const now = Math.floor(Date.now() / 1000)
     const ts = Number(timestamp)
     if (!Number.isFinite(ts) || Math.abs(now - ts) > tolerance) {
