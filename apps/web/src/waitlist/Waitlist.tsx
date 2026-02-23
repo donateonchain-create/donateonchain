@@ -547,7 +547,7 @@ const Waitlist = () => {
                                 <img
                                     src={Banner2Img}
                                     alt="Banner 2"
-                                    width={1200}
+                                    width={600}
                                     height={800}
                                     loading="lazy"
                                     decoding="async"
@@ -594,8 +594,8 @@ const Waitlist = () => {
                             <img
                                 src={BannerNft}
                                 alt="Banner NFT"
-                                width={1200}
-                                height={800}
+                                width={350}
+                                height={500}
                                 loading="lazy"
                                 decoding="async"
                                 className="absolute bottom-[-150px] right-[-50px]"
