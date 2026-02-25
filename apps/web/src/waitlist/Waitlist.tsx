@@ -14,6 +14,9 @@ import Button from '../component/Button'
 
 const COOLDOWN_MS = 30000
 
+// In-memory rate limiting to prevent basic rapid-fire UI submissions
+const submissionLog = new Map<string, number>()
+
 const Waitlist = () => {
     const sectionRef = useRef<HTMLElement>(null)
     const howItWorksRef = useRef<HTMLElement>(null)
@@ -226,21 +229,36 @@ const Waitlist = () => {
 
     const handleWaitlistSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        const normalizedEmail = email.trim().toLowerCase()
         const now = Date.now()
+
+        // Client-side rate limiting check
+        const lastSubmission = submissionLog.get(normalizedEmail)
+        if (lastSubmission && (now - lastSubmission) < COOLDOWN_MS) {
+            const remaining = Math.ceil((COOLDOWN_MS - (now - lastSubmission)) / 1000)
+            setJoinError('')
+            setStatusMessage(`Please wait ${remaining}s before trying again.`)
+            return
+        }
+
         if (nextAllowedTime && now < nextAllowedTime) {
             const remaining = Math.ceil((nextAllowedTime - now) / 1000)
             setJoinError('')
             setStatusMessage(`Please wait ${remaining}s before trying again.`)
             return
         }
+
         if (email.trim() && role && validateEmail(email)) {
             setIsSubmitting(true)
+            submissionLog.set(normalizedEmail, now)
+
             try {
                 setJoinError('')
                 setStatusMessage('')
 
                 const { saveWaitlistEntry } = await import('./waitlistApi')
                 const result = await saveWaitlistEntry(email, role)
+
                 if (result?.status === 'saved') {
                     setEmail('')
                     setRole('')
@@ -253,11 +271,21 @@ const Waitlist = () => {
                 } else {
                     setJoinError('Something went wrong. Please try again.')
                 }
-            } catch (error) {
-                setJoinError('Something went wrong. Please try again.')
+            } catch (error: any) {
+                // To prevent email enumeration, we treat "already exists" errors as success on the frontend
+                const errMessage = error?.message?.toLowerCase() || ''
+                if (errMessage.includes('already joined') || errMessage.includes('exists')) {
+                    setEmail('')
+                    setRole('')
+                    setEmailError('')
+                    setShowSuccessModal(true)
+                    setStatusMessage('')
+                } else {
+                    setJoinError('Something went wrong. Please try again.')
+                }
             } finally {
                 setIsSubmitting(false)
-                setNextAllowedTime(Date.now() + COOLDOWN_MS)
+                setNextAllowedTime(Date.now() + 5000) // 5s global cooldown
             }
         } else if (!validateEmail(email) && email.trim()) {
             setEmailError('Please enter a valid email address')
@@ -782,76 +810,74 @@ const Waitlist = () => {
                         transitionDelay: waitlistFormVisible ? '300ms' : '0ms'
                     }}>
 
-                    <form onSubmit={handleWaitlistSubmit} className="space-y-4">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="flex-[2]">
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={handleEmailChange}
-                                    placeholder="Enter your email"
-                                    className={`w-full px-6 py-4 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:border-transparent text-black text-base ${
-                                        emailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-300 focus:ring-[#FFC33F]'
-                                    }`}
-                                    required
-                                />
-                                {emailError && (
-                                    <p className="text-red-500 text-sm mt-1">{emailError}</p>
-                                )}
-                            </div>
-                            <div className="relative min-w-[180px]">
-                                <label htmlFor="role" className="sr-only">
-                                    Select your role
-                                </label>
-                                <select
-                                    id="role"
-                                    value={role}
-                                    onChange={(e) => setRole(e.target.value)}
-                                    className="w-full px-6 py-4 pr-10 rounded-lg border border-gray-300 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FFC33F] focus:border-transparent text-black text-base appearance-none"
-                                    required
-                                >
-                                    <option value="" disabled hidden>Select role</option>
-                                    <option value="donor">Donor</option>
-                                    <option value="creator">Designer/Creator</option>
-                                    <option value="ngo">NGO</option>
-                                </select>
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
+                        <form onSubmit={handleWaitlistSubmit} className="space-y-4">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="flex-[2]">
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={handleEmailChange}
+                                        placeholder="Enter your email"
+                                        className={`w-full px-6 py-4 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:border-transparent text-black text-base ${emailError ? 'border-red-500 focus:ring-red-400' : 'border-gray-300 focus:ring-[#FFC33F]'
+                                            }`}
+                                        required
+                                    />
+                                    {emailError && (
+                                        <p className="text-red-500 text-sm mt-1">{emailError}</p>
+                                    )}
                                 </div>
+                                <div className="relative min-w-[180px]">
+                                    <label htmlFor="role" className="sr-only">
+                                        Select your role
+                                    </label>
+                                    <select
+                                        id="role"
+                                        value={role}
+                                        onChange={(e) => setRole(e.target.value)}
+                                        className="w-full px-6 py-4 pr-10 rounded-lg border border-gray-300 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FFC33F] focus:border-transparent text-black text-base appearance-none"
+                                        required
+                                    >
+                                        <option value="" disabled hidden>Select role</option>
+                                        <option value="donor">Donor</option>
+                                        <option value="creator">Designer/Creator</option>
+                                        <option value="ngo">NGO</option>
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <Button
+                                    type="submit"
+                                    variant="primary"
+                                    size="lg"
+                                    disabled={!email.trim() || !role || !validateEmail(email) || isSubmitting}
+                                    className={`rounded-lg px-8 py-4 font-medium whitespace-nowrap min-w-[180px] ${isSubmitting
+                                            ? 'bg-[#FFC33F]/70 hover:bg-[#FFC33F] cursor-wait'
+                                            : !email.trim() || !role || !validateEmail(email)
+                                                ? 'bg-gray-300 hover:bg-gray-300 cursor-not-allowed'
+                                                : 'bg-[#FFC33F]/70 hover:bg-[#FFC33F]'
+                                        }`}
+                                    style={{ color: 'white' }}
+                                >
+                                    {isSubmitting ? (
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        'Submit'
+                                    )}
+                                </Button>
                             </div>
-                            <Button
-                                type="submit"
-                                variant="primary"
-                                size="lg"
-                                disabled={!email.trim() || !role || !validateEmail(email) || isSubmitting}
-                                className={`rounded-lg px-8 py-4 font-medium whitespace-nowrap min-w-[180px] ${
-                                    isSubmitting
-                                        ? 'bg-[#FFC33F]/70 hover:bg-[#FFC33F] cursor-wait'
-                                        : !email.trim() || !role || !validateEmail(email)
-                                        ? 'bg-gray-300 hover:bg-gray-300 cursor-not-allowed'
-                                        : 'bg-[#FFC33F]/70 hover:bg-[#FFC33F]'
-                                }`}
-                                style={{ color: 'white' }}
-                            >
-                                {isSubmitting ? (
-                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                ) : (
-                                    'Submit'
-                                )}
-                            </Button>
-                        </div>
-                        {joinError && (
-                            <p className="text-red-500 text-sm">{joinError}</p>
-                        )}
-                        {!joinError && statusMessage && (
-                            <p className="text-yellow-600 text-sm">{statusMessage}</p>
-                        )}
-                    </form>
+                            {joinError && (
+                                <p className="text-red-500 text-sm">{joinError}</p>
+                            )}
+                            {!joinError && statusMessage && (
+                                <p className="text-yellow-600 text-sm">{statusMessage}</p>
+                            )}
+                        </form>
                     </div>
 
                     <p className="text-left text-sm text-black mt-3 transition-all duration-1000 ease-out" style={{
@@ -880,7 +906,7 @@ const Waitlist = () => {
                                 className="text-white hover:text-[#FFC33F] transition-colors"
                             >
                                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                                 </svg>
                             </a>
                             <a
@@ -891,7 +917,7 @@ const Waitlist = () => {
                                 className="text-white hover:text-[#FFC33F] transition-colors"
                             >
                                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
                                 </svg>
                             </a>
                             <a
@@ -902,7 +928,7 @@ const Waitlist = () => {
                                 className="text-white hover:text-[#FFC33F] transition-colors"
                             >
                                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                                 </svg>
                             </a>
                         </div>
@@ -948,9 +974,9 @@ const Waitlist = () => {
                         <div className="flex flex-col items-center text-center">
                             <div className="relative mb-6">
                                 <svg width="222" height="222" viewBox="0 0 222 222" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-48 h-48 sm:w-56 sm:h-56">
-                                    <circle cx="111" cy="111" r="111" fill="#FFF3D8"/>
-                                    <circle cx="111" cy="111" r="92" fill="#FFC33F"/>
-                                    <path fillRule="evenodd" clipRule="evenodd" d="M156.937 79.0399C158.279 80.3824 159.033 82.2031 159.033 84.1014C159.033 85.9998 158.279 87.8204 156.937 89.163L103.277 142.823C102.568 143.533 101.726 144.095 100.799 144.479C99.8727 144.863 98.8796 145.061 97.8766 145.061C96.8736 145.061 95.8805 144.863 94.9539 144.479C94.0273 144.095 93.1853 143.533 92.4762 142.823L65.8155 116.167C65.1317 115.507 64.5863 114.717 64.2111 113.843C63.8359 112.97 63.6384 112.031 63.6302 111.08C63.6219 110.129 63.803 109.187 64.163 108.307C64.523 107.427 65.0546 106.628 65.7268 105.956C66.3989 105.283 67.1983 104.752 68.0781 104.392C68.958 104.032 69.9007 103.851 70.8513 103.859C71.8018 103.867 72.7413 104.065 73.6147 104.44C74.4882 104.815 75.2781 105.36 75.9385 106.044L97.8742 127.98L146.81 79.0399C147.474 78.3746 148.264 77.8469 149.133 77.4868C150.002 77.1267 150.933 76.9414 151.873 76.9414C152.814 76.9414 153.745 77.1267 154.614 77.4868C155.483 77.8469 156.272 78.3746 156.937 79.0399Z" fill="black"/>
+                                    <circle cx="111" cy="111" r="111" fill="#FFF3D8" />
+                                    <circle cx="111" cy="111" r="92" fill="#FFC33F" />
+                                    <path fillRule="evenodd" clipRule="evenodd" d="M156.937 79.0399C158.279 80.3824 159.033 82.2031 159.033 84.1014C159.033 85.9998 158.279 87.8204 156.937 89.163L103.277 142.823C102.568 143.533 101.726 144.095 100.799 144.479C99.8727 144.863 98.8796 145.061 97.8766 145.061C96.8736 145.061 95.8805 144.863 94.9539 144.479C94.0273 144.095 93.1853 143.533 92.4762 142.823L65.8155 116.167C65.1317 115.507 64.5863 114.717 64.2111 113.843C63.8359 112.97 63.6384 112.031 63.6302 111.08C63.6219 110.129 63.803 109.187 64.163 108.307C64.523 107.427 65.0546 106.628 65.7268 105.956C66.3989 105.283 67.1983 104.752 68.0781 104.392C68.958 104.032 69.9007 103.851 70.8513 103.859C71.8018 103.867 72.7413 104.065 73.6147 104.44C74.4882 104.815 75.2781 105.36 75.9385 106.044L97.8742 127.98L146.81 79.0399C147.474 78.3746 148.264 77.8469 149.133 77.4868C150.002 77.1267 150.933 76.9414 151.873 76.9414C152.814 76.9414 153.745 77.1267 154.614 77.4868C155.483 77.8469 156.272 78.3746 156.937 79.0399Z" fill="black" />
                                 </svg>
                             </div>
                             <h3 className="text-3xl sm:text-4xl font-bold text-black mb-3" style={{ fontFamily: 'Poppins, sans-serif' }}>
