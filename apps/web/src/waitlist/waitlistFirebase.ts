@@ -1,31 +1,107 @@
-import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'
-import { db } from '../config/firebaseConfig'
+import { apiPath, request } from '../api/client'
 
-const WAITLIST_COLLECTION = 'waitlist'
+const WAITLIST_OFFLINE_KEY = 'waitlist_offline_queue'
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
-export const getWaitlistEntryByEmail = async (email: string) => {
-  if (!db) return null
-  const id = normalizeEmail(email)
-  const ref = doc(db, WAITLIST_COLLECTION, id)
-  const snap = await getDoc(ref)
-  if (!snap.exists()) return null
-  return snap.data()
+const sanitizeInput = (input: string, maxLength: number): string => {
+  if (!input) return ''
+  // Strip tags and basic XSS vectors
+  const sanitized = input.replace(/<\/?[^>]+(>|$)/g, '')
+    // Replaces dangerous chars with safe equivalents
+    .replace(/[<>"'=;()]/g, '')
+    .trim()
+  return sanitized.substring(0, maxLength)
+}
+
+type WaitlistOfflineEntry = {
+  email: string
+  role?: string
+  timestamp: number
+}
+
+const readOfflineQueue = (): WaitlistOfflineEntry[] => {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(WAITLIST_OFFLINE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item) => item && typeof item.email === 'string')
+      .map((item) => ({
+        email: normalizeEmail(item.email),
+        role: typeof item.role === 'string' ? item.role : undefined,
+        timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+      }))
+  } catch {
+    return []
+  }
+}
+
+const writeOfflineQueue = (queue: WaitlistOfflineEntry[]) => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(WAITLIST_OFFLINE_KEY, JSON.stringify(queue))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const enqueueOfflineWaitlistEntry = (email: string, role?: string) => {
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) return
+  const current = readOfflineQueue()
+  current.push({
+    email: normalizedEmail,
+    role,
+    timestamp: Date.now(),
+  })
+  writeOfflineQueue(current)
+}
+
+const submitWaitlistToBackend = async (email: string, role: string) => {
+  const sanitizedEmail = sanitizeInput(email, 254)
+  const sanitizedRole = sanitizeInput(role, 50)
+
+  const body = {
+    email: normalizeEmail(sanitizedEmail),
+    role: sanitizedRole,
+    source: 'waitlist-landing',
+  }
+  await request(apiPath('/api/waitlist'), {
+    method: 'POST',
+    body,
+  })
 }
 
 export const saveWaitlistEntry = async (email: string, role: string) => {
-  if (!db) return false
-  const id = normalizeEmail(email)
-  const now = new Date().toISOString()
-  const ref = doc(db, WAITLIST_COLLECTION, id)
-  await setDoc(ref, { email: id, role, joinedAt: now })
-  return true
+  try {
+    await submitWaitlistToBackend(email, role)
+    return { status: 'saved' as const }
+  } catch {
+    enqueueOfflineWaitlistEntry(email, role)
+    return { status: 'queued' as const }
+  }
 }
 
-export const getAllWaitlistEntries = async () => {
-  if (!db) return []
-  const ref = collection(db, WAITLIST_COLLECTION)
-  const snap = await getDocs(ref)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+export const flushOfflineWaitlistQueue = async () => {
+  if (typeof window === 'undefined') return
+  if (!navigator.onLine) return
+
+  const queue = readOfflineQueue()
+  if (!queue.length) return
+
+  const remaining: WaitlistOfflineEntry[] = []
+
+  for (const entry of queue) {
+    if (!entry.email) continue
+    try {
+      await submitWaitlistToBackend(entry.email, entry.role || '')
+    } catch {
+      remaining.push(entry)
+    }
+  }
+
+  writeOfflineQueue(remaining)
 }

@@ -1,5 +1,7 @@
 import { Client, AccountId, AccountBalanceQuery, AccountInfoQuery } from "@hashgraph/sdk";
 
+const isDev = import.meta.env.DEV;
+
 export const getHederaClient = () => {
   return Client.forTestnet();
 };
@@ -13,7 +15,10 @@ export const getAccountBalance = async (accountId: string): Promise<string> => {
     
     return balance.hbars.toString();
   } catch (error) {
-    console.error("Error fetching Hedera account balance:", error);
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error("Error fetching Hedera account balance:", error);
+    }
     throw error;
   }
 };
@@ -27,7 +32,10 @@ export const getAccountBalanceInTinybars = async (accountId: string): Promise<st
     
     return balance.hbars.toTinybars().toString();
   } catch (error) {
-    console.error("Error fetching Hedera account balance:", error);
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error("Error fetching Hedera account balance:", error);
+    }
     throw error;
   }
 };
@@ -45,7 +53,10 @@ export const getAccountInfo = async (accountId: string) => {
       key: info.key?.toString() || null,
     };
   } catch (error) {
-    console.error("Error fetching Hedera account info:", error);
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error("Error fetching Hedera account info:", error);
+    }
     throw error;
   }
 };
@@ -63,7 +74,10 @@ export const convertEvmAddressToAccountId = (evmAddress: string): string | null 
     
     return `${shard}.${realm}.${num}`;
   } catch (error) {
-    console.error("Error converting EVM address to Account ID:", error);
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error("Error converting EVM address to Account ID:", error);
+    }
     return null;
   }
 };

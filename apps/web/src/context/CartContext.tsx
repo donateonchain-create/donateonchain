@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useAccount } from 'wagmi'
-import { saveCart, getCart } from '../utils/firebaseStorage'
+import { saveCart, getCart } from '../utils/storageApi'
 
 interface CartItem {
     id: number
@@ -55,9 +55,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                 
              
                 try {
-                    const firebaseCart = await getCart(address)
-                    if (firebaseCart && firebaseCart.length > 0) {
-                        const migratedCart = firebaseCart.map((item: any) => {
+                    const storedCart = await getCart(address)
+                    if (storedCart && storedCart.length > 0) {
+                        const migratedCart = storedCart.map((item: any) => {
                             if (!item.uniqueId) {
                                 return {
                                     ...item,
@@ -71,7 +71,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                         return
                     }
                 } catch (error) {
-                    console.error('Error loading cart from Firebase:', error)
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error loading cart from Firebase:', error)
+                    }
                 }
                 
              
@@ -91,7 +94,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                         setCartItems(migratedCart)
                         setCurrentWallet(address)
                     } catch (error) {
-                        console.error('Error loading cart from localStorage:', error)
+                        if (import.meta.env.DEV) {
+                            // eslint-disable-next-line no-console
+                            console.error('Error loading cart from localStorage:', error)
+                        }
                     }
                 } else {
                     setCurrentWallet(address)
@@ -105,7 +111,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                             const parsedCart = JSON.parse(savedCart)
                             setCartItems(parsedCart)
                         } catch (error) {
-                            console.error('Error loading cart from localStorage:', error)
+                            if (import.meta.env.DEV) {
+                                // eslint-disable-next-line no-console
+                                console.error('Error loading cart from localStorage:', error)
+                            }
                         }
                     }
                 }
@@ -127,7 +136,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                 try {
                     await saveCart(address, cartItems)
                 } catch (error) {
-                    console.error('Error saving cart to Firebase:', error)
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error saving cart to Firebase:', error)
+                    }
                 }
             }
         }
@@ -142,13 +154,16 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                 item => item.uniqueId === uniqueId
             )
 
-            if (existingItemIndex > -1) {
+                if (existingItemIndex > -1) {
                 const updatedItems = [...prevItems]
                 const currentItem = updatedItems[existingItemIndex]
                 const newQuantity = currentItem.quantity + 1
                 
                 if (maxQuantity && newQuantity > maxQuantity) {
-                    console.error('Cannot add more items, maximum quantity reached')
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Cannot add more items, maximum quantity reached')
+                    }
                     return prevItems
                 }
                 
@@ -181,7 +196,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
             items.map(item => {
                 if (item.uniqueId === uniqueId) {
                     if (item.maxQuantity && newQuantity > item.maxQuantity) {
-                        console.error('Cannot exceed maximum quantity')
+                        if (import.meta.env.DEV) {
+                            // eslint-disable-next-line no-console
+                            console.error('Cannot exceed maximum quantity')
+                        }
                         return item
                     }
                     return { ...item, quantity: newQuantity }

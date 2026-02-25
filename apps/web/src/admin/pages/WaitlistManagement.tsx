@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
-import { getAllWaitlistEntries } from '../../waitlist/waitlistFirebase'
+import { apiPath, request } from '../../api/client'
 
 interface WaitlistEntry {
   id: string
@@ -39,10 +39,19 @@ const WaitlistManagement = () => {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    let active = true
     const load = async () => {
       try {
-        const data = await getAllWaitlistEntries()
-        const sorted = [...data].sort((a: WaitlistEntry, b: WaitlistEntry) => {
+        const res = await request<{ items: Array<{ id: string; email?: string; role?: string; createdAt?: string }> }>(
+          apiPath('/api/admin/waitlist')
+        )
+        const mapped: WaitlistEntry[] = (res.items || []).map((item) => ({
+          id: String(item.id),
+          email: item.email,
+          role: item.role,
+          joinedAt: item.createdAt,
+        }))
+        const sorted = [...mapped].sort((a: WaitlistEntry, b: WaitlistEntry) => {
           const aTime = a.joinedAt ? new Date(a.joinedAt).getTime() : 0
           const bTime = b.joinedAt ? new Date(b.joinedAt).getTime() : 0
           return bTime - aTime
@@ -51,10 +60,11 @@ const WaitlistManagement = () => {
       } catch {
         setError('Unable to load waitlist entries.')
       } finally {
-        setIsLoading(false)
+        if (active) setIsLoading(false)
       }
     }
     load()
+    return () => { active = false }
   }, [])
 
   return (

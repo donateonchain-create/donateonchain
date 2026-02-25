@@ -5,7 +5,7 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import Button from '../component/Button'
 import { ChevronDown, Upload, X, CheckCircle, XCircle } from 'lucide-react'
-import { saveUserDesign, saveNGODesign, saveToGlobalDesigns, uploadDesignImageToFirebase, saveDesignIndex } from '../utils/firebaseStorage'
+import { saveUserDesign, saveNGODesign, saveToGlobalDesigns, uploadDesignImageToStorage, saveDesignIndex } from '../utils/storageApi'
 import { uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs'
 import { keccak256, stringToHex } from 'viem'
 import { createDesign, listActiveCampaignsWithMeta } from '../onchain/adapter'
@@ -172,8 +172,8 @@ const CreateDesign = () => {
                 const designId = designData.id
                 let frontImageUrl = designData.frontDesign?.dataUrl || null
                 let backImageUrl = designData.backDesign?.dataUrl || null
-                if (designData.frontDesign?.dataUrl) { const uploadedUrl = await uploadDesignImageToFirebase(designId.toString(), 'front', designData.frontDesign.dataUrl); if (uploadedUrl) frontImageUrl = uploadedUrl }
-                if (designData.backDesign?.dataUrl) { const uploadedUrl = await uploadDesignImageToFirebase(designId.toString(), 'back', designData.backDesign.dataUrl); if (uploadedUrl) backImageUrl = uploadedUrl }
+                if (designData.frontDesign?.dataUrl) { const uploadedUrl = await uploadDesignImageToStorage(designId.toString(), 'front', designData.frontDesign.dataUrl); if (uploadedUrl) frontImageUrl = uploadedUrl }
+                if (designData.backDesign?.dataUrl) { const uploadedUrl = await uploadDesignImageToStorage(designId.toString(), 'back', designData.backDesign.dataUrl); if (uploadedUrl) backImageUrl = uploadedUrl }
                 let designFileCid: string | null = null
                 let previewCid: string | null = null
                 if (!frontDesign) { throw new Error('Please upload a front design image') }

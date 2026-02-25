@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import rateLimit from 'express-rate-limit'
 import { createPublicClient, createWalletClient, decodeEventLog, http, keccak256, stringToHex } from 'viem'
 import { hederaTestnet } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -49,6 +50,26 @@ function requireAdminApiKey(req, res, next) {
 const rateLimitWindowMs = Number(process.env.KYC_RATE_LIMIT_WINDOW_MS || 60000)
 const rateLimitMax = Number(process.env.KYC_RATE_LIMIT_MAX || 30)
 const kycRateLimits = new Map()
+
+// --- Waitlist rate limiter (server-side, per-IP, battle-tested express-rate-limit) ---
+const waitlistLimiter = rateLimit({
+  windowMs: 60 * 1000,  // 1-minute sliding window
+  max: 5,               // 5 submissions per IP per window
+  standardHeaders: true, // RFC 6585 RateLimit-* headers
+  legacyHeaders: false,
+  message: { error: 'rate_limited' },
+  keyGenerator: (req) => getClientIp(req), // reuse existing trusted IP extractor
+})
+
+// --- Minimum response time (ms) for the waitlist endpoint.
+// Equalises timing between new-email writes and duplicate no-ops so an attacker
+// cannot distinguish the two via response latency (timing attack / email enumeration).
+const WAITLIST_MIN_RESPONSE_MS = Number(process.env.WAITLIST_MIN_RESPONSE_MS || 200)
+
+// --- Server-side input sanitizer. Strips HTML tags and dangerous chars.
+// Applied in Zod transforms so data is clean before it ever reaches the DB.
+const sanitizeStr = (s) =>
+  s.replace(/<[^>]*>/g, '').replace(/[<>"'=;]/g, '').trim()
 
 function getClientIp(req) {
   const forwarded = req.get('x-forwarded-for')
@@ -365,7 +386,7 @@ async function handleMirrorEvent(log) {
       await upsertCampaignBase({ id: campaignId, ngoAddress: ngo, designerAddress: designer, targetAmount, deadline })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(CAMPAIGN_CREATED_REGISTRY_EVENT_ABI)
@@ -377,7 +398,7 @@ async function handleMirrorEvent(log) {
       await upsertCampaignBase({ id: campaignId, ngoAddress: ngo, designerAddress: designer, targetAmount: '0', deadline: '0' })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(CAMPAIGN_VETTED_EVENT_ABI)
@@ -397,7 +418,7 @@ async function handleMirrorEvent(log) {
       })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(FUNDS_CLAIMED_EVENT_ABI)
@@ -417,7 +438,7 @@ async function handleMirrorEvent(log) {
       })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(DONATION_MADE_EVENT_ABI)
@@ -427,7 +448,7 @@ async function handleMirrorEvent(log) {
       const amount = decoded.args.amount ? String(decoded.args.amount) : '0'
       await recordDonation({ campaignId, donor, amount, txHash })
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(DONATION_MADE_MANAGER_EVENT_ABI)
@@ -437,7 +458,7 @@ async function handleMirrorEvent(log) {
       const amount = decoded.args.totalAmount ? String(decoded.args.totalAmount) : '0'
       await recordDonation({ campaignId, donor, amount, txHash })
     }
-  } catch {}
+  } catch { }
 }
 
 async function syncMirrorContractOnce(contractIdOrAddress, reqLogger) {
@@ -617,11 +638,11 @@ app.get('/api/mirror/logs', async (req, res) => {
     ...(contractIdOrAddress ? { contractIdOrAddress } : {}),
     ...(q.timestampGte || q.timestampLte
       ? {
-          timestamp: {
-            ...(q.timestampGte ? { gte: q.timestampGte } : {}),
-            ...(q.timestampLte ? { lte: q.timestampLte } : {}),
-          },
-        }
+        timestamp: {
+          ...(q.timestampGte ? { gte: q.timestampGte } : {}),
+          ...(q.timestampLte ? { lte: q.timestampLte } : {}),
+        },
+      }
       : {}),
   }
 
@@ -669,10 +690,12 @@ app.get('/api/campaigns', async (req, res) => {
 })
 
 const WaitlistCreateSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  email: z.string().email(),
-  role: z.string().min(1).max(80).optional(),
-  source: z.string().min(1).max(120).optional(),
+  name: z.string().min(1).max(120).optional().transform(v => v ? sanitizeStr(v) : v),
+  // email normalised to lowercase + trimmed in the schema; format validated by .email()
+  email: z.string().email().max(254).transform(v => v.toLowerCase().trim()),
+  // role is an enum — no free-form strings, so injection is structurally impossible
+  role: z.enum(['donor', 'creator', 'ngo']),
+  source: z.string().min(1).max(120).optional().transform(v => v ? sanitizeStr(v) : v),
   metadata: z.any().optional(),
 })
 
@@ -683,31 +706,132 @@ const WaitlistQuerySchema = z.object({
   role: z.string().min(1).optional(),
 })
 
-app.post('/api/waitlist', async (req, res) => {
+app.post('/api/waitlist', waitlistLimiter, async (req, res) => {
+  // Start the clock for the constant-time response floor
+  const requestStart = Date.now()
+
+  // Helper: always wait at least WAITLIST_MIN_RESPONSE_MS before responding.
+  // This eliminates timing differences between new writes and duplicate no-ops.
+  const sendTimed = async (statusCode, body) => {
+    const elapsed = Date.now() - requestStart
+    if (elapsed < WAITLIST_MIN_RESPONSE_MS) {
+      await new Promise(r => setTimeout(r, WAITLIST_MIN_RESPONSE_MS - elapsed))
+    }
+    return res.status(statusCode).json(body)
+  }
+
   const parsed = WaitlistCreateSchema.safeParse(req.body)
   if (!parsed.success) {
+    // Validation errors are returned immediately — these don't reveal email existence
     return res.status(400).json({ error: parsed.error.flatten() })
   }
 
-  const data = parsed.data
-  const created = await prisma.waitlistEntry.upsert({
-    where: { email: data.email.toLowerCase() },
-    update: {
-      name: data.name ?? undefined,
-      role: data.role ?? undefined,
-      source: data.source ?? undefined,
-      metadata: data.metadata ?? undefined,
-    },
-    create: {
-      name: data.name ?? null,
-      email: data.email.toLowerCase(),
-      role: data.role ?? null,
-      source: data.source ?? null,
-      metadata: data.metadata ?? null,
-    },
-  })
+  try {
+    const data = parsed.data
+    await prisma.waitlistEntry.upsert({
+      where: { email: data.email },
+      update: {
+        name: data.name ?? undefined,
+        role: data.role ?? undefined,
+        source: data.source ?? undefined,
+        metadata: data.metadata ?? undefined,
+      },
+      create: {
+        name: data.name ?? null,
+        email: data.email,
+        role: data.role ?? null,
+        source: data.source ?? null,
+        metadata: data.metadata ?? null,
+      },
+    })
 
-  res.status(201).json({ id: created.id, email: created.email })
+    // Always HTTP 200 — new entry and existing entry are indistinguishable to the caller.
+    // This prevents status-code-based email enumeration.
+    return sendTimed(200, { ok: true })
+  } catch (err) {
+    req.log?.error(err, 'waitlist_upsert_failed')
+    return sendTimed(500, { error: 'internal_error' })
+  }
+})
+
+app.get('/api/admin/dashboard/metrics', requireAdminApiKey, async (req, res) => {
+  try {
+    const [
+      totalDonationCount,
+      activeCampaigns,
+      totalNgos,
+      pendingKycReviews,
+    ] = await Promise.all([
+      prisma.donationEvent.count(),
+      prisma.campaign.count({ where: { vettedApproved: true } }),
+      prisma.ngo.count(),
+      prisma.kycVerification.count({ where: { status: 'pending' } }),
+    ])
+
+    res.json({
+      totalDonations: totalDonationCount,
+      activeCampaigns,
+      totalNgos,
+      totalDesigners: 0,
+      pendingKycReviews,
+      openComplaints: 0,
+    })
+  } catch (error) {
+    req.log?.error(error, 'admin_dashboard_metrics_failed')
+    res.status(500).json({ error: 'Failed to fetch metrics' })
+  }
+})
+
+app.get('/api/admin/ngos', requireAdminApiKey, async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1)
+    const limit = Math.min(Number(req.query.limit || 20), 100)
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined
+
+    const where = status ? { kycStatus: status } : {}
+
+    const [items, total] = await Promise.all([
+      prisma.ngo.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.ngo.count({ where }),
+    ])
+    res.json({ page, limit, total, items })
+  } catch (error) {
+    console.error('admin_ngos_failed:', error.message)
+    res.status(500).json({ error: 'Failed to fetch NGOs' })
+  }
+})
+
+app.get('/api/admin/campaigns', requireAdminApiKey, async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1)
+    const limit = Math.min(Number(req.query.limit || 20), 100)
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined
+    const ngoAddress = typeof req.query.ngoAddress === 'string' ? req.query.ngoAddress : undefined
+
+    let where = {}
+    if (status === 'active') where.vettedApproved = true
+    if (status === 'pending') where.vettedApproved = false
+    if (ngoAddress) where.ngoAddress = ngoAddress.toLowerCase()
+
+    const [items, total] = await Promise.all([
+      prisma.campaign.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.campaign.count({ where }),
+    ])
+    res.json({ page, limit, total, items })
+  } catch (error) {
+    console.error('admin_campaigns_failed:', error.message)
+    res.status(500).json({ error: 'Failed to fetch campaigns' })
+  }
 })
 
 app.get('/api/admin/waitlist', requireAdminApiKey, async (req, res) => {

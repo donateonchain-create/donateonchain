@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react';
 import { products, creators } from '../data/databank';
-import { getAllGlobalDesigns } from '../utils/firebaseStorage';
+import { getAllGlobalDesigns } from '../utils/storageApi';
 import { listAllCampaignsFromChain, getUserRoles } from '../onchain/adapter';
 
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -48,10 +48,8 @@ const Home = () => {
         const loadData = async () => {
            
             try {
-                const firebaseDesigns = await getAllGlobalDesigns();
-                
-              
-                const validFirebaseDesigns = firebaseDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const storedDesigns = await getAllGlobalDesigns();
+                const validStoredDesigns = storedDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
                 
                 
@@ -63,7 +61,7 @@ const Home = () => {
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
               
-                const allDesigns = [...validFirebaseDesigns, ...validUserDesigns, ...validNgoDesigns];
+                const allDesigns = [...validStoredDesigns, ...validUserDesigns, ...validNgoDesigns];
                 
                 
                 const uniqueDesigns = Array.from(
@@ -86,8 +84,10 @@ const Home = () => {
         
         setPopularDesigns(recentDesigns);
             } catch (error) {
-                console.error('Error loading designs from Firebase, using localStorage only:', error);
-                
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error loading designs from Firebase, using localStorage only:', error);
+                }
              
                 const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
                 const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
@@ -124,7 +124,10 @@ const Home = () => {
                 setPopularCampaigns(topCampaigns);
                 setCache(cacheKey, topCampaigns)
             } catch (error) {
-                console.error('Error loading campaigns:', error);
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error loading campaigns:', error);
+                }
                 setPopularCampaigns([]);
             }
         
