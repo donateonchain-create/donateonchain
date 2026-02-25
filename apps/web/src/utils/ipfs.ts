@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
+const isDev = import.meta.env.DEV
 
 function withTimeout(ms: number) {
   const controller = new AbortController()
@@ -21,14 +22,20 @@ export const uploadFileToIPFS = async (file: File): Promise<string | null> => {
 
     if (!response.ok) {
       const error = await response.text()
-      console.error('IPFS upload error:', error)
+      if (isDev) {
+        // eslint-disable-next-line no-console
+        console.error('IPFS upload error:', error)
+      }
       return null
     }
 
     const data = await response.json()
     return data.cid
   } catch (error) {
-    console.error('Error uploading file to IPFS:', error)
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error('Error uploading file to IPFS:', error)
+    }
     return null
   }
 }
@@ -46,14 +53,20 @@ export const uploadMetadataToIPFS = async (metadata: any): Promise<string | null
 
     if (!response.ok) {
       const error = await response.text()
-      console.error('IPFS metadata upload error:', error)
+      if (isDev) {
+        // eslint-disable-next-line no-console
+        console.error('IPFS metadata upload error:', error)
+      }
       return null
     }
 
     const data = await response.json()
     return data.cid
   } catch (error) {
-    console.error('Error uploading metadata to IPFS:', error)
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error('Error uploading metadata to IPFS:', error)
+    }
     return null
   }
 }
@@ -67,7 +80,10 @@ export const getIPFSHash = async (content: string | File): Promise<string | null
       return await uploadMetadataToIPFS(metadata)
     }
   } catch (error) {
-    console.error('Error getting IPFS hash:', error)
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error('Error getting IPFS hash:', error)
+    }
     return null
   }
 }
@@ -88,7 +104,10 @@ export const unpinCID = async (cid: string): Promise<boolean> => {
     const data = await res.json()
     return Boolean(data.ok)
   } catch (e) {
-    console.error('Failed to unpin CID:', cid, e)
+    if (isDev) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to unpin CID:', cid, e)
+    }
     return false
   }
 }

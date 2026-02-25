@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAccount, useWatchContractEvent } from 'wagmi'
 import Button from '../component/Button'
 import { addresses, abis } from '../onchain/contracts'
-import { updateNgoApplicationStatus, getNgoApplications, updateDesignerApplicationStatus, getDesignerApplications, saveAdminList, getAdminList, getAllGlobalDesigns, getDesignIndex, getUserProfile, deleteCampaignEverywhere, deleteDesignEverywhere } from '../utils/firebaseStorage'
+import { updateNgoApplicationStatus, getNgoApplications, updateDesignerApplicationStatus, getDesignerApplications, saveAdminList, getAdminList, getAllGlobalDesigns, getDesignIndex, getUserProfile, deleteCampaignEverywhere, deleteDesignEverywhere } from '../utils/storageApi'
 import { deactivateCampaign, deactivateDesign, deactivateNGO, deactivateDesigner, listActiveCampaignsWithMeta, listAllCampaignsFromChain } from '../onchain/adapter'
 import { read } from '../onchain/client'
 import { adminAddAdmin, adminRemoveAdmin, adminApproveNgo, adminApproveDesigner, listPendingNgos, listPendingDesigners } from '../onchain/adapter'
@@ -275,7 +275,10 @@ const AdminPage = () => {
         totalOrders: 0
       })
     } catch (error) {
-      console.error('Error loading admin stats:', error)
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('Error loading admin stats:', error)
+      }
     }
   }
 
@@ -1160,7 +1163,10 @@ const AdminPage = () => {
                                     }
 
                                     if (numericId == null) {
-                                      console.error('Unable to resolve on-chain campaign ID for', campaign.title)
+                                      if (import.meta.env.DEV) {
+                                        // eslint-disable-next-line no-console
+                                        console.error('Unable to resolve on-chain campaign ID for', campaign.title)
+                                      }
                                       return
                                     }
                                     setDeactivatingId(numericId)
@@ -1169,7 +1175,10 @@ const AdminPage = () => {
                                     setActiveCampaignsList(prev => prev.filter((c: any) => (c.onchainId || c.id) !== numericId))
                                     setToast({ msg: 'Campaign deactivated successfully', type: 'success' })
                                   } catch (e) {
-                                    console.error('Failed to deactivate campaign', e)
+                                    if (import.meta.env.DEV) {
+                                      // eslint-disable-next-line no-console
+                                      console.error('Failed to deactivate campaign', e)
+                                    }
                                     setToast({ msg: 'Failed to deactivate campaign', type: 'error' })
                                   }
                                   finally { setDeactivatingId(null) }
@@ -1254,12 +1263,18 @@ const AdminPage = () => {
                                 try {
                                   const designId = design.onchainId || design.id
                                   if (!designId) {
-                                    console.error('Unable to resolve design ID for', design.pieceName)
+                                    if (import.meta.env.DEV) {
+                                      // eslint-disable-next-line no-console
+                                      console.error('Unable to resolve design ID for', design.pieceName)
+                                    }
                                     return
                                   }
                                   const numericId = typeof designId === 'number' ? designId : Number(designId)
                                   if (isNaN(numericId)) {
-                                    console.error('Invalid design ID:', designId)
+                                    if (import.meta.env.DEV) {
+                                      // eslint-disable-next-line no-console
+                                      console.error('Invalid design ID:', designId)
+                                    }
                                     return
                                   }
                                   setDeactivatingDesignId(numericId)
@@ -1268,7 +1283,10 @@ const AdminPage = () => {
                                   setActiveDesignsList(prev => prev.filter((d: any) => (d.onchainId || d.id) !== numericId))
                                   setToast({ msg: 'Design deactivated successfully', type: 'success' })
                                 } catch (e) {
-                                  console.error('Failed to deactivate design', e)
+                                  if (import.meta.env.DEV) {
+                                    // eslint-disable-next-line no-console
+                                    console.error('Failed to deactivate design', e)
+                                  }
                                   setToast({ msg: 'Failed to deactivate design', type: 'error' })
                                 } finally {
                                   setDeactivatingDesignId(null)
@@ -1382,7 +1400,10 @@ const AdminPage = () => {
                                   setActiveNgosList(prev => prev.filter((n: any) => (n.walletAddress || n.connectedWalletAddress)?.toLowerCase() !== wallet))
                                   setToast({ msg: 'NGO deactivated successfully', type: 'success' })
                                 } catch (e) {
-                                  console.error('Failed to deactivate NGO', e)
+                                  if (import.meta.env.DEV) {
+                                    // eslint-disable-next-line no-console
+                                    console.error('Failed to deactivate NGO', e)
+                                  }
                                   setToast({ msg: 'Failed to deactivate NGO', type: 'error' })
                                 } finally {
                                   setIsProcessing(false)
@@ -1470,7 +1491,10 @@ const AdminPage = () => {
                                   setActiveDesignersList(prev => prev.filter((d: any) => (d.walletAddress || d.connectedWalletAddress)?.toLowerCase() !== wallet))
                                   setToast({ msg: 'Designer deactivated successfully', type: 'success' })
                                 } catch (e) {
-                                  console.error('Failed to deactivate designer', e)
+                                  if (import.meta.env.DEV) {
+                                    // eslint-disable-next-line no-console
+                                    console.error('Failed to deactivate designer', e)
+                                  }
                                   setToast({ msg: 'Failed to deactivate designer', type: 'error' })
                                 } finally {
                                   setIsProcessing(false)

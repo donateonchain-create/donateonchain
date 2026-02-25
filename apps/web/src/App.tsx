@@ -20,7 +20,7 @@ import Header from './component/Header'
 import { Waitlist } from './waitlist'
 import ProfileSetupModal from './component/ProfileSetupModal'
 import PrivateRoute from './component/PrivateRoute'
-import { getUserProfile, getNgoProfile } from './utils/firebaseStorage'
+import { getUserProfile, getNgoProfile } from './utils/storageApi'
 
 const WAITLIST_MODE = import.meta.env.VITE_WAITLIST_MODE === "true"
 
@@ -86,8 +86,10 @@ const MainAppRoutes = () => {
                     
                     setShowProfileSetup(true)
                 } catch (error) {
-                    console.error('Error checking profile:', error)
-                  
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error checking profile:', error)
+                    }
                     const savedProfile = localStorage.getItem('userProfile')
                     if (savedProfile) {
                         const profile = JSON.parse(savedProfile)

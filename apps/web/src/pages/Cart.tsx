@@ -6,7 +6,7 @@ import Banner from "../component/Banner";
 import Button from "../component/Button";
 import { products } from "../data/databank";
 import { useCart } from "../context/CartContext";
-import { getAllGlobalDesigns } from '../utils/firebaseStorage';
+import { getAllGlobalDesigns } from '../utils/storageApi';
 import { getDesignPrice } from '../onchain/adapter';
 import { SkeletonCartRow } from '../component/Skeleton';
 
@@ -22,10 +22,10 @@ const Cart = () => {
     const loadDesigns = async () => {
       setIsLoading(true);
       try {
-        const firebaseDesigns = await getAllGlobalDesigns();
+        const storedDesigns = await getAllGlobalDesigns();
         const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
         const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-        const allDesigns = [...firebaseDesigns, ...userDesigns, ...ngoDesigns];
+        const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
         const uniqueDesigns = Array.from(
           new Map(allDesigns.map(design => [design.id, design])).values()
         );

@@ -9,8 +9,10 @@ import Button from '../component/Button'
 import EditCampaignModal from '../component/EditCampaignModal'
 import { Loader2, Check, Gift, Trash } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
-import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
-import { uploadFileToIPFS } from '../utils/ipfs';
+import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
+import { uploadFileToIPFS } from '../utils/ipfs'
+import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation } from '../api'
+import type { DonationEventApi } from '../types/api'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -47,7 +49,8 @@ const CampaignDetails = () => {
     const [donationSuccess, setDonationSuccess] = useState(false)
     const [donationError, setDonationError] = useState<string | null>(null)
     const [txHash, setTxHash] = useState<string | null>(null)
-    
+    const [donationActivity, setDonationActivity] = useState<DonationEventApi[]>([])
+
 
 
     useEffect(() => {
@@ -87,7 +90,7 @@ const CampaignDetails = () => {
                     return
                     }
                     try {
-                        const donations = await getDonationsByCampaign(numericId)
+                        const donations = await onchainGetDonationsByCampaign(numericId)
                         amountRaised = donations.totalRaisedHBAR
                     } catch {}
                 const campaignObj: any = {
@@ -104,6 +107,16 @@ const CampaignDetails = () => {
                     }
                 const target = campaignObj.target || 0
                 campaignObj.percentage = target > 0 ? (amountRaised / target) * 100 : 0
+                    try {
+                        const apiCampaign = await getCampaignById(String(id))
+                        if (apiCampaign?.donationTotal != null) {
+                            const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
+                            if (backendRaised >= 0) {
+                                campaignObj.amountRaised = backendRaised
+                                campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
+                            }
+                        }
+                    } catch {}
                     setCampaign(campaignObj)
                     setCache(cacheKey, campaignObj)
             } catch {
@@ -134,6 +147,11 @@ const CampaignDetails = () => {
         }
         loadCampaign()
         loadRelated()
+        if (id) {
+            apiGetDonationsByCampaign(id, 50)
+                .then(setDonationActivity)
+                .catch(() => setDonationActivity([]))
+        }
     }, [id])
 
     
@@ -199,8 +217,16 @@ const CampaignDetails = () => {
             setTxHash(receipt.transactionHash)
             setDonationSuccess(true)
             setDonationAmount('')
+            try {
+                await createDonation({
+                    donorAddress: address!,
+                    campaignId: id!,
+                    amount: value,
+                    txHash: receipt.transactionHash,
+                })
+            } catch (_e) {}
             const numericId = BigInt(id || '0')
-            const donations = await getDonationsByCampaign(numericId)
+            const donations = await onchainGetDonationsByCampaign(numericId)
             const goal = campaign.target || 0
             const updatedAmountRaised = donations.totalRaisedHBAR
             const updatedPercentage = goal > 0 ? (updatedAmountRaised / goal) * 100 : 0
@@ -211,12 +237,18 @@ const CampaignDetails = () => {
             }
             setCampaign(updated)
             setCache(`campaign_${id}`, updated)
+            if (id) {
+                apiGetDonationsByCampaign(id, 50).then(setDonationActivity).catch(() => {})
+            }
             setTimeout(() => {
                 setDonationSuccess(false)
                 setTxHash(null)
             }, 5000)
         } catch (e: any) {
-            console.error('Donation failed', e)
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.error('Donation failed', e)
+            }
             setDonationError('Unable to make donation. Please try again.')
             setTimeout(() => {
                 setDonationError(null)
@@ -399,13 +431,32 @@ const CampaignDetails = () => {
                                 </p>
                             </div>
                         )}
+
+                        {donationActivity.length > 0 && (
+                            <div>
+                                <h2 className="text-xl font-semibold text-black mb-3">Recent donations</h2>
+                                <ul className="space-y-2">
+                                    {donationActivity.slice(0, 10).map((d) => (
+                                        <li key={d.id} className="flex items-center justify-between text-sm text-gray-700">
+                                            <span className="font-mono truncate max-w-[140px]" title={d.donor}>
+                                                {d.donor.slice(0, 6)}...{d.donor.slice(-4)}
+                                            </span>
+                                            <span className="font-medium">{Number(d.amount).toLocaleString()} HBAR</span>
+                                            {d.createdAt && (
+                                                <span className="text-gray-500">
+                                                    {new Date(d.createdAt).toLocaleDateString()}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
-                   
                 </div>
             </section>
 
-          
             <section className="px-4 md:px-7 py-12">
                     <h2 className="text-3xl md:text-4xl font-bold text-black mb-8">
                         You may also like

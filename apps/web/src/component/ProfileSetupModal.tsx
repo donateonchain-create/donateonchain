@@ -2,7 +2,7 @@ import { X, Camera } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import Button from './Button'
 import { useAccount } from 'wagmi'
-import { saveUserProfileWithImages } from '../utils/firebaseStorage'
+import { saveUserProfileWithImages } from '../utils/storageApi'
 
 interface ProfileSetupModalProps {
     isOpen: boolean
@@ -121,9 +121,15 @@ const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupMod
         if (isConnected && address) {
             try {
                 await saveUserProfileWithImages(address, profileData)
-                console.log('Profile saved to Firebase')
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.log('Profile saved to Firebase')
+                }
             } catch (error) {
-                console.error('Error saving profile to Firebase:', error)
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error saving profile to Firebase:', error)
+                }
             }
         }
         

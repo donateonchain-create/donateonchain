@@ -8,9 +8,10 @@ import { useCart } from '../context/CartContext'
 import { products } from '../data/databank'
 import { useAccount } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
-import { saveDonation, getAllGlobalDesigns, saveOrder } from '../utils/firebaseStorage'
+import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getDesignPrice, batchPurchaseDesignsPayable } from '../onchain/adapter'
 import { SkeletonCheckoutOverview } from '../component/Skeleton'
+import { createDonation, createOrder } from '../api'
 
 const Checkout = () => {
     const navigate = useNavigate()
@@ -31,10 +32,10 @@ const Checkout = () => {
         const loadDesigns = async () => {
             setDesignsLoading(true)
             try {
-                const firebaseDesigns = await getAllGlobalDesigns();
+                const storedDesigns = await getAllGlobalDesigns();
                 const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
                 const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
-                const allDesigns = [...firebaseDesigns, ...userDesigns, ...ngoDesigns];
+                const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
                 const uniqueDesigns = Array.from(new Map(allDesigns.map(design => [design.id, design])).values());
                 setCustomDesigns(uniqueDesigns);
             } catch (error) {
@@ -131,14 +132,23 @@ const Checkout = () => {
         setIsProcessing(true)
         if (!address) { setIsProcessing(false); return }
 
-        const donations: any[] = []
+        const donations: Array<{ itemId: number; itemName: string; campaignId: string | number; amount: number; donorAddress: string; date: string }> = []
         const designCartItems = cartItems.filter((item) => { const product = getProductById(item.id); return !!product?.pieceName })
         cartItems.forEach((item) => {
             const product = getProductById(item.id)
             if (!product) return
-            const price = product.price
+            const priceHBAR = product.pieceName
+              ? parseInt(product.price.toString().replace(/[^\d]/g, ''))
+              : parseInt((product as any).price?.replace(/[^\d]/g, '') || '0')
             if (item.campaign) {
-                donations.push({ itemId: item.id, itemName: product.title || product.pieceName, campaign: item.campaign, amount: price, date: new Date().toISOString(), donorAddress: address })
+              donations.push({
+                itemId: item.id,
+                itemName: (product as any).title || product.pieceName,
+                campaignId: item.campaign as any,
+                amount: priceHBAR * item.quantity,
+                date: new Date().toISOString(),
+                donorAddress: address,
+              })
             }
         })
         
@@ -147,13 +157,26 @@ const Checkout = () => {
             for (const it of items) { await getDesignPrice(it.designId) }
             const receipt = await batchPurchaseDesignsPayable(items)
             const txHashes: string[] = Array.isArray(receipt) ? receipt.map((r: any) => r?.transactionHash || r?.hash).filter(Boolean) : [ (receipt as any)?.transactionHash || (receipt as any)?.hash ].filter(Boolean)
-            for (const donation of donations) { await saveDonation(address, donation) }
+            for (const donation of donations) {
+              await createDonation({
+                donorAddress: donation.donorAddress,
+                campaignId: donation.campaignId,
+                amount: donation.amount,
+                itemId: donation.itemId,
+                itemName: donation.itemName,
+                date: donation.date,
+                txHash: txHashes[0],
+              })
+            }
             if (txHashes.length > 0) {
                 const orderItems = designCartItems.map((it) => ({ id: it.id, quantity: it.quantity }))
-                await saveOrder({ buyer: address, items: orderItems, totalHBAR: 'batch', txHashes })
+                await createOrder({ buyer: address, items: orderItems, totalHBAR: String(total), txHashes })
             }
         } catch (error) {
-            console.error('Checkout error:', error)
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.error('Checkout error:', error)
+            }
         }
 
         clearCart(); setIsProcessing(false); setShowSuccessModal(true)

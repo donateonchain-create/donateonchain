@@ -8,7 +8,7 @@ import ProductCard from '../component/ProductCard'
 import { products } from '../data/databank'
 import { ChevronDown, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCart } from '../context/CartContext'
-import { getUserDesigns, getNGODesigns, getAllGlobalDesigns, getDesignIndex } from '../utils/firebaseStorage'
+import { getUserDesigns, getNGODesigns, getAllGlobalDesigns, getDesignIndex } from '../utils/storageApi'
 import { getDesignById, getDesignPrice } from '../onchain/adapter'
 import { SkeletonProductDetail, SkeletonCard } from '../component/Skeleton'
 

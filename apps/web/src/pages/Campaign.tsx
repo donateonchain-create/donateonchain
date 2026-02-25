@@ -9,6 +9,7 @@ import { SkeletonCampaignCard } from '../component/Skeleton'
 import ShopImg from '../assets/ShopImg.png'
 import { ChevronDown } from 'lucide-react'
 import { listAllCampaignsFromChain } from '../onchain/adapter'
+import { getCampaigns } from '../api'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -64,10 +65,17 @@ const Campaign = () => {
                     setFilteredCampaigns(cached)
                     setIsLoading(false)
                 }
-                const onchain = await listAllCampaignsFromChain()
-                const withPercent = onchain.map(c => {
-                    const target = Number(c.target) || 0
-                    const raised = Number(c.amountRaised) || 0
+                const [onchain, apiResult] = await Promise.all([
+                    listAllCampaignsFromChain(),
+                    getCampaigns({ limit: 200 }).catch(() => ({ items: [] })),
+                ])
+                const backendById = new Map(apiResult.items.map((c) => [c.id, c]))
+                const withPercent = onchain.map((c) => {
+                    const backend = backendById.get(String(c.onchainId ?? c.id))
+                    const target = Number(c.target) || (backend ? Number(backend.targetAmount) : 0) || 0
+                    const raised = backend
+                        ? Number(backend.raisedAmount ?? 0)
+                        : Number(c.amountRaised) || 0
                     const percentage = target > 0 ? (raised / target) * 100 : 0
                     const category = (c.category || '')
                         .toString()
@@ -81,7 +89,10 @@ const Campaign = () => {
                 setCache(cacheKey, withPercent)
                 setIsLoading(false)
             } catch (error) {
-                console.error('Error loading on-chain campaigns:', error)
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error loading campaigns:', error)
+                }
                 setIsLoading(false)
             }
         }
