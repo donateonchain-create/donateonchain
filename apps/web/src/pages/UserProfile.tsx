@@ -6,7 +6,7 @@ import { Plus, X, Camera, Copy, Check, Loader2, XCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToFirebase, getOrdersByWallet } from '../utils/firebaseStorage';
+import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage } from '../utils/storageApi';
 import { getUserProofNFTs } from '../onchain/adapter';
 import { getUserRoles, createCampaignByNGO } from '../onchain/adapter';
 import { listAllCampaignsFromChain } from '../onchain/adapter';
@@ -14,6 +14,7 @@ import CreateCampaignModal from '../component/CreateCampaignModal';
 import { uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
 import { keccak256, stringToHex } from 'viem';
 import { storeHashViaRelayer } from '../utils/relayer';
+import { getOrders } from '../api'
 
 const UserProfile = () => {
     const navigate = useNavigate();
@@ -44,7 +45,10 @@ const UserProfile = () => {
                 const nfts = await getUserProofNFTs(address as `0x${string}`);
                 setMyNfts(nfts);
             } catch (_e) {
-                console.error('Failed to load NFTs', _e);
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Failed to load NFTs', _e);
+                }
             } finally {
                 setIsLoadingNfts(false);
             }
@@ -76,33 +80,20 @@ const UserProfile = () => {
    
     useEffect(() => {
         const loadProfile = async () => {
-            console.log('Loading profile - address:', address, 'isConnected:', isConnected);
-            
             if (address && isConnected) {
                 try {
-                    const firebaseProfile = await getUserProfile(address);
-                    console.log('Firebase profile loaded:', firebaseProfile);
-                    
-                    if (firebaseProfile) {
-                        console.log('Setting profile data from Firebase:', {
-                            hasBannerImage: !!firebaseProfile.bannerImage,
-                            hasProfileImage: !!firebaseProfile.profileImage,
-                            bannerImageLength: firebaseProfile.bannerImage?.length || 0,
-                            profileImageLength: firebaseProfile.profileImage?.length || 0
-                        });
+                    const storedProfile = await getUserProfile(address);
+                    if (storedProfile) {
                         setProfileData({
-                            name: firebaseProfile.name || 'User',
-                            bio: firebaseProfile.bio || '',
-                            bannerImage: firebaseProfile.bannerImage || null,
-                            profileImage: firebaseProfile.profileImage || null
+                            name: storedProfile.name || 'User',
+                            bio: storedProfile.bio || '',
+                            bannerImage: storedProfile.bannerImage || null,
+                            profileImage: storedProfile.profileImage || null
                         });
                     } else {
-                        console.log('No Firebase profile found, checking localStorage...');
-                       
                         const savedProfile = localStorage.getItem('userProfile');
                         if (savedProfile) {
                             const profile = JSON.parse(savedProfile);
-                            console.log('Loaded from localStorage:', profile);
                             setProfileData({
                                 name: profile.name || 'User',
                                 bio: profile.bio || '',
@@ -112,8 +103,10 @@ const UserProfile = () => {
                         }
                     }
                 } catch (error) {
-                    console.error('Error loading profile from Firebase:', error);
-                    
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error loading profile from Firebase:', error);
+                    }
                     const savedProfile = localStorage.getItem('userProfile');
                     if (savedProfile) {
                         const profile = JSON.parse(savedProfile);
@@ -126,8 +119,6 @@ const UserProfile = () => {
                     }
                 }
             } else {
-                console.log('Not connected, loading from localStorage...');
-                
         const savedProfile = localStorage.getItem('userProfile');
         if (savedProfile) {
             const profile = JSON.parse(savedProfile);
@@ -149,14 +140,13 @@ const UserProfile = () => {
             if (address && isConnected) {
                 try {
                     const roles = await getUserRoles(address as `0x${string}`);
-                    console.log('🔍 Checking user roles for:', address);
-                    console.log('📊 Roles fetched:', roles);
-                    console.log('🎨 isDesigner (on-chain verified):', roles.isDesigner);
-                    console.log('🏢 isNgo (on-chain verified):', roles.isNgo);
                     setIsDesigner(roles.isDesigner);
                     setIsNgo(roles.isNgo);
                 } catch (error) {
-                    console.error('❌ Error checking roles:', error);
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error checking roles:', error);
+                    }
                 }
             }
         };
@@ -172,41 +162,37 @@ const UserProfile = () => {
         const loadDesigns = async () => {
             if (address && isConnected) {
                 try {
-                   
-                    let firebaseDesigns = await getUserDesigns(address);
-                    
-                    
-                    const designsToMigrate = firebaseDesigns.filter((design: any) => 
+                    let storedDesigns = await getUserDesigns(address);
+                    const designsToMigrate = storedDesigns.filter((design: any) => 
                         (design.frontDesign?.dataUrl && !design.frontDesign?.url) || 
                         (design.backDesign?.dataUrl && !design.backDesign?.url)
                     );
                     
-                   
                     if (designsToMigrate.length > 0) {
-                        console.log(`Migrating ${designsToMigrate.length} designs to Firebase Storage...`);
-                        await Promise.all(
-                            designsToMigrate.map((design: any) => migrateDesignImagesToFirebase(design, address, 'user'))
-                        );
+                        if (import.meta.env.DEV) {
+                            // eslint-disable-next-line no-console
+                            console.log(`Migrating ${designsToMigrate.length} designs to Firebase Storage...`);
+                        }
+                        await Promise.all(designsToMigrate.map((design: any) => migrateDesignImagesToStorage(design, address, 'user')));
                         
                        
-                        firebaseDesigns = await getUserDesigns(address);
+                        storedDesigns = await getUserDesigns(address);
                     }
-                    
-                    if (firebaseDesigns && firebaseDesigns.length > 0) {
-                       
-                        const formattedDesigns = firebaseDesigns.map((design: any) => ({
+                    if (storedDesigns && storedDesigns.length > 0) {
+                        const formattedDesigns = storedDesigns.map((design: any) => ({
                             id: parseInt(design.id),
                             ...design
                         }));
                         setCreatedDesigns(formattedDesigns);
                     } else {
-                       
                         const savedDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
                         setCreatedDesigns(savedDesigns);
                     }
                 } catch (error) {
-                    console.error('Error loading designs from Firebase:', error);
-                    
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error loading designs from Firebase:', error);
+                    }
                     const savedDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
                     setCreatedDesigns(savedDesigns);
                 }
@@ -245,8 +231,8 @@ const UserProfile = () => {
         const loadOrders = async () => {
             if (address && isConnected) {
                 try {
-                    const userOrders = await getOrdersByWallet(address)
-                    setOrders(userOrders)
+                    const res = await getOrders({ buyer: address, limit: 100 })
+                    setOrders(res.items || [])
                 } catch (_e) {
                     setOrders([])
                 }
@@ -259,33 +245,15 @@ const UserProfile = () => {
         const calculateStats = async () => {
             if (address && isConnected) {
                 try {
-                    // TODO: Implement stats calculation
                 } catch (error) {
-                    console.error('Error loading stats from Firebase:', error);
-                    // donationHistory = JSON.parse(localStorage.getItem('userDonations') || '[]');
-                    // purchaseHistory = allPurchases.filter((purchase: any) => 
-                    //     purchase.creatorWallet?.toLowerCase() === address.toLowerCase()
-                    // );
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error loading stats from Firebase:', error);
+                    }
                 }
             } else {
-                // donationHistory = JSON.parse(localStorage.getItem('userDonations') || '[]');
-                // purchaseHistory = allPurchases.filter((purchase: any) => 
-                //     purchase.creatorWallet?.toLowerCase() === address.toLowerCase()
-                // );
             }
-        
-        // const uniqueCampaigns = new Set(donationHistory.map((donation: any) => donation.campaign).filter(Boolean));
-        
-        // const totalDonated = donationHistory.reduce((sum: number, donation: any) => {
-        //     const amount = parseFloat(donation.amount?.replace(/[^\d.]/g, '') || '0');
-        //     return sum + amount;
-        // }, 0);
-        
-        // const totalProfit = purchaseHistory.reduce((sum: number, purchase: any) => {
-        //     const amount = parseFloat(purchase.amount?.replace(/[^\d.]/g, '') || '0');
-        //     return sum + amount;
-        // }, 0);
-        
+
         setStatistics({
             causesSupported: 0, // No longer calculated from donationHistory
             totalDonated: 0, // No longer calculated from donationHistory
@@ -342,16 +310,6 @@ const UserProfile = () => {
             profileImage: profileImage || profileData.profileImage
         };
         
-        console.log('Saving profile:', { 
-            name: updatedProfile.name, 
-            bio: updatedProfile.bio,
-            hasBannerImage: !!updatedProfile.bannerImage,
-            hasProfileImage: !!updatedProfile.profileImage,
-            bannerImageLength: updatedProfile.bannerImage?.length || 0,
-            profileImageLength: updatedProfile.profileImage?.length || 0
-        });
-        console.log('Address:', address, 'isConnected:', isConnected);
-        
         setProfileData(prev => ({
             ...prev,
             name: formData.name,
@@ -361,18 +319,18 @@ const UserProfile = () => {
         }));
         
         localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-        console.log('Saved to localStorage');
 
         if (address && isConnected) {
             try {
-                console.log('Attempting to save to Firebase with images...');
                 const result = await saveUserProfileWithImages(address, updatedProfile);
-                console.log('Save result:', result);
+                void result
             } catch (error) {
-                console.error('Error saving profile to Firebase:', error);
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error saving profile to Firebase:', error);
+                }
             }
         } else {
-            console.log('Not saving to Firebase - address or connection missing');
         }
         
         setIsSaving(false);
@@ -1068,7 +1026,10 @@ const UserProfile = () => {
                                 );
                                 setCreatedCampaigns(userCampaigns);
                             } catch (error) {
-                                console.error('Error reloading campaigns:', error);
+                                if (import.meta.env.DEV) {
+                                    // eslint-disable-next-line no-console
+                                    console.error('Error reloading campaigns:', error);
+                                }
                             }
                         }
                     }}

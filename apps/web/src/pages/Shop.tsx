@@ -9,7 +9,7 @@ import { SkeletonCard } from '../component/Skeleton'
 import ShopImg from '../assets/ShopImg.png'
 import { Filter, ChevronDown } from 'lucide-react'
 import { products } from '../data/databank'
-import { getAllGlobalDesigns } from '../utils/firebaseStorage'
+import { getAllGlobalDesigns } from '../utils/storageApi'
 import { listDesigns } from '../onchain/adapter'
 
 const Shop = () => {
@@ -63,7 +63,7 @@ const Shop = () => {
     useEffect(() => {
         const loadDesigns = async () => {
             try {
-                const firebaseDesigns = await getAllGlobalDesigns();
+                const storedDesigns = await getAllGlobalDesigns();
                 let chainDesigns: any[] = []
                 try {
                     const onchain = await listDesigns()
@@ -78,7 +78,7 @@ const Shop = () => {
                 } catch {}
                 
               
-                const validFirebaseDesigns = firebaseDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const validStoredDesigns = storedDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
                 
                
@@ -89,7 +89,7 @@ const Shop = () => {
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
                
-                const allDesigns = [...chainDesigns, ...validFirebaseDesigns, ...validUserDesigns, ...validNgoDesigns];
+                const allDesigns = [...chainDesigns, ...validStoredDesigns, ...validUserDesigns, ...validNgoDesigns];
                 const uniqueDesigns = Array.from(
                     new Map(allDesigns.map(design => [design.id, design])).values()
                 );
@@ -120,8 +120,10 @@ const Shop = () => {
                 setFilteredProducts(combinedItems);
                 setIsLoading(false);
             } catch (error) {
-                console.error('Error loading designs from Firebase, using localStorage only:', error);
-                
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error loading designs from Firebase, using localStorage only:', error);
+                }
                
                 const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
                 const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
