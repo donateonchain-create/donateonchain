@@ -117,7 +117,10 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
           createdAt: Date.now(),
         })
       } catch (e) {
-        console.warn(`Failed to load campaign ${id}:`, e)
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn(`Failed to load campaign ${id}:`, e)
+        }
         continue
       }
     }
@@ -129,7 +132,10 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
 
     return campaigns
   } catch (error) {
-    console.error('Error listing active campaigns from chain:', error)
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('Error listing active campaigns from chain:', error)
+    }
     return []
   }
 }
@@ -156,21 +162,21 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{ token
   }
 }
 
-export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promise<any[]> {
+export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<any[]> {
   try {
     const activeIds = await listActiveCampaignIds()
     const syncedCampaigns: any[] = []
 
-    for (const firebaseCampaign of firebaseCampaigns) {
+    for (const storedCampaign of storedCampaigns) {
       let onchainId: bigint | undefined
 
-      if (firebaseCampaign.onchainId) {
-        onchainId = BigInt(firebaseCampaign.onchainId)
-      } else if (firebaseCampaign.ngoWallet) {
+      if (storedCampaign.onchainId) {
+        onchainId = BigInt(storedCampaign.onchainId)
+      } else if (storedCampaign.ngoWallet) {
         for (const id of activeIds) {
           try {
             const chainCampaign = await getCampaign(id)
-            if (chainCampaign.ngo?.toLowerCase() === firebaseCampaign.ngoWallet?.toLowerCase()) {
+            if (chainCampaign.ngo?.toLowerCase() === storedCampaign.ngoWallet?.toLowerCase()) {
               onchainId = id
               break
             }
@@ -185,7 +191,7 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
           const chainCampaign = await getCampaign(onchainId)
           const donations = await getDonationsByCampaign(onchainId)
           syncedCampaigns.push({
-            ...firebaseCampaign,
+            ...storedCampaign,
             id: Number(onchainId),
             onchainId: Number(onchainId),
             amountRaised: donations.totalRaisedHBAR,
@@ -194,17 +200,20 @@ export async function syncCampaignsWithOnChain(firebaseCampaigns: any[]): Promis
             ngoWallet: chainCampaign.ngo,
           })
         } catch {
-          syncedCampaigns.push({ ...firebaseCampaign, onchainId: Number(onchainId) })
+          syncedCampaigns.push({ ...storedCampaign, onchainId: Number(onchainId) })
         }
       } else {
-        syncedCampaigns.push(firebaseCampaign)
+        syncedCampaigns.push(storedCampaign)
       }
     }
 
     return syncedCampaigns
   } catch (error) {
-    console.error('Error syncing campaigns with on-chain:', error)
-    return firebaseCampaigns
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('Error syncing campaigns with on-chain:', error)
+    }
+    return storedCampaigns
   }
 }
 

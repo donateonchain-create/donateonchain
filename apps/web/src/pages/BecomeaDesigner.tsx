@@ -7,11 +7,12 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { SkeletonFormApplication } from '../component/Skeleton'
 import { Upload, CheckCircle, Clock, X, ChevronDown } from 'lucide-react'
-import { saveDesignerApplication, getDesignerApplicationByWallet, deleteDesignerApplication } from '../utils/firebaseStorage'
+import { saveDesignerApplication, getDesignerApplicationByWallet, deleteDesignerApplication } from '../utils/storageApi'
 import { designerRegisterPending } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
 import { publicClient, read } from '../onchain/client'
 import { addresses, abis } from '../onchain/contracts'
+import { createKycVerification } from '../api'
 
 const BecomeaDesigner = () => {
     const navigate = useNavigate()
@@ -33,10 +34,10 @@ const BecomeaDesigner = () => {
             }
             setIsLoadingApplication(true)
             try {
-                const firebaseApplication = await getDesignerApplicationByWallet(address)
-                if (firebaseApplication) {
+                const existingApplication = await getDesignerApplicationByWallet(address)
+                if (existingApplication) {
                     setHasAlreadyApplied(true)
-                    setExistingDesignerData(firebaseApplication)
+                    setExistingDesignerData(existingApplication)
                     return
                 }
                 const designers = JSON.parse(localStorage.getItem('designers') || '[]')
@@ -250,6 +251,9 @@ const BecomeaDesigner = () => {
             }
 
             await saveDesignerApplication(designerData)
+            try {
+                await createKycVerification({ walletAddress: address, metadata })
+            } catch {}
             
             try {
                 let needsOnChainRegistration = true
@@ -281,11 +285,20 @@ const BecomeaDesigner = () => {
                 } else {
                     setToast({ msg: 'On-chain designer registration failed. Application saved to database.', type: 'error' })
                 }
-                console.error('On-chain designer registration failed', e)
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('On-chain designer registration failed', e)
+                }
             }
-            console.log('Designer application saved to Firebase')
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.log('Designer application saved to Firebase')
+            }
         } catch (error) {
-            console.error('Error saving designer application to Firebase:', error)
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.error('Error saving designer application to Firebase:', error)
+            }
             setToast({ msg: 'Failed to save designer application.', type: 'error' })
         }
 

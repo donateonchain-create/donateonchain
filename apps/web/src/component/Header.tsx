@@ -39,7 +39,10 @@ const Header = () => {
                     const roles = await getUserRoles(address as `0x${string}`);
                     setIsNgo(roles.isNgo);
                 } catch (error) {
-                    console.error('Error checking roles in header:', error);
+                    if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.error('Error checking roles in header:', error);
+                    }
                 }
             } else {
                 setIsNgo(false);
@@ -152,14 +155,10 @@ const Header = () => {
 
     const handleOrdersClick = () => {
         setIsAccountMenuOpen(false)
-        
-        console.log('Navigate to orders')
     }
 
     const handleSignOutClick = () => {
         setIsAccountMenuOpen(false)
-        
-        console.log('Sign out')
     }
 
     const handleDisconnect = () => {
@@ -224,6 +223,7 @@ const Header = () => {
         const loadRole = async () => {
             try {
                 if (!address) { setShowAdmin(false); return }
+                if (chainId !== 296) { setShowAdmin(false); return }
                 const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
                 const isAdmin = await readOnchain<boolean>({ address: addresses.DONATE_ON_CHAIN as `0x${string}`, abi: abis.DonateOnChain as any, functionName: 'hasRole', args: [DEFAULT_ADMIN_ROLE, address] })
                 setShowAdmin(Boolean(isAdmin))
@@ -232,7 +232,7 @@ const Header = () => {
             }
         }
         loadRole()
-    }, [address])
+    }, [address, chainId])
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

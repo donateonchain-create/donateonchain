@@ -6,7 +6,7 @@ import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { ChevronDown, Upload, CheckCircle, Clock } from 'lucide-react'
-import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/firebaseStorage'
+import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/storageApi'
 import { ngoRegisterPending } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
 import { publicClient, read } from '../onchain/client'
@@ -32,14 +32,17 @@ const BecomeanNgo = () => {
             
            
             try {
-                const firebaseApplication = await getNgoApplicationByWallet(address)
-                if (firebaseApplication) {
+                const existingApplication = await getNgoApplicationByWallet(address)
+                if (existingApplication) {
                     setHasAlreadyApplied(true)
-                    setExistingNgoData(firebaseApplication)
+                    setExistingNgoData(existingApplication)
                     return
                 }
             } catch (error) {
-                console.error('Error checking Firebase for NGO application:', error)
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error checking Firebase for NGO application:', error)
+                }
             }
             
             
@@ -295,11 +298,20 @@ const BecomeanNgo = () => {
                 } else {
                     setToast({ msg: 'On-chain NGO registration failed. Application saved to database.', type: 'error' })
                 }
-                console.error('On-chain NGO registration failed', e)
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('On-chain NGO registration failed', e)
+                }
             }
-            console.log('NGO application saved to Firebase')
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.log('NGO application saved to Firebase')
+            }
         } catch (error) {
-            console.error('Error saving NGO application to Firebase:', error)
+            if (import.meta.env.DEV) {
+                // eslint-disable-next-line no-console
+                console.error('Error saving NGO application to Firebase:', error)
+            }
             setToast({ msg: 'Failed to save NGO application.', type: 'error' })
         }
 

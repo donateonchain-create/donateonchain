@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import WaitlistImg from './WaitlistImg.webp'
 import WaitlistImg4 from './WaitlistImg4.webp'
 import WaitlistImg5 from './WaitlistImg5.webp'
@@ -11,6 +11,8 @@ import Banner1Img from './banner1img.webp'
 
 import FooterLogoWhite from './FooterLogoWhite.png'
 import Button from '../component/Button'
+
+const COOLDOWN_MS = 30000
 
 const Waitlist = () => {
     const sectionRef = useRef<HTMLElement>(null)
@@ -28,6 +30,8 @@ const Waitlist = () => {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [joinError, setJoinError] = useState('')
+    const [statusMessage, setStatusMessage] = useState('')
+    const [nextAllowedTime, setNextAllowedTime] = useState<number | null>(null)
 
     const validateEmail = (email: string): boolean => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -55,6 +59,26 @@ const Waitlist = () => {
     const [isSecondHeaderSticky, setIsSecondHeaderSticky] = useState(false)
     const secondHeaderOriginalTopRef = useRef<number | null>(null)
     const [isMobile, setIsMobile] = useState(false)
+
+    useEffect(() => {
+        const syncOfflineQueue = () => {
+            import('./waitlistFirebase')
+                .then(({ flushOfflineWaitlistQueue }) => flushOfflineWaitlistQueue().catch(() => undefined))
+                .catch(() => undefined)
+        }
+
+        syncOfflineQueue()
+
+        const handleOnline = () => {
+            syncOfflineQueue()
+        }
+
+        window.addEventListener('online', handleOnline)
+
+        return () => {
+            window.removeEventListener('online', handleOnline)
+        }
+    }, [])
 
     useEffect(() => {
         const handleScroll = () => {
@@ -202,26 +226,38 @@ const Waitlist = () => {
 
     const handleWaitlistSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        const now = Date.now()
+        if (nextAllowedTime && now < nextAllowedTime) {
+            const remaining = Math.ceil((nextAllowedTime - now) / 1000)
+            setJoinError('')
+            setStatusMessage(`Please wait ${remaining}s before trying again.`)
+            return
+        }
         if (email.trim() && role && validateEmail(email)) {
             setIsSubmitting(true)
             try {
                 setJoinError('')
-                const { getWaitlistEntryByEmail, saveWaitlistEntry } = await import('./waitlistFirebase')
-                const existing = await getWaitlistEntryByEmail(email)
-                if (existing) {
-                    setJoinError('This email has already joined the waitlist.')
-                    setShowSuccessModal(false)
-                } else {
-                    await saveWaitlistEntry(email, role)
+                setStatusMessage('')
+
+                const { saveWaitlistEntry } = await import('./waitlistFirebase')
+                const result = await saveWaitlistEntry(email, role)
+                if (result?.status === 'saved') {
                     setEmail('')
                     setRole('')
                     setEmailError('')
                     setShowSuccessModal(true)
+                    setStatusMessage('')
+                } else if (result?.status === 'queued') {
+                    setShowSuccessModal(false)
+                    setStatusMessage("You're offline. We'll submit once you're back online.")
+                } else {
+                    setJoinError('Something went wrong. Please try again.')
                 }
             } catch (error) {
                 setJoinError('Something went wrong. Please try again.')
             } finally {
                 setIsSubmitting(false)
+                setNextAllowedTime(Date.now() + COOLDOWN_MS)
             }
         } else if (!validateEmail(email) && email.trim()) {
             setEmailError('Please enter a valid email address')
@@ -812,6 +848,9 @@ const Waitlist = () => {
                         {joinError && (
                             <p className="text-red-500 text-sm">{joinError}</p>
                         )}
+                        {!joinError && statusMessage && (
+                            <p className="text-yellow-600 text-sm">{statusMessage}</p>
+                        )}
                     </form>
                     </div>
 
@@ -928,4 +967,44 @@ const Waitlist = () => {
     )
 }
 
-export default Waitlist
+type WaitlistErrorBoundaryState = {
+    hasError: boolean
+}
+
+class WaitlistErrorBoundary extends React.Component<React.PropsWithChildren, WaitlistErrorBoundaryState> {
+    state: WaitlistErrorBoundaryState = { hasError: false }
+
+    static getDerivedStateFromError() {
+        return { hasError: true }
+    }
+
+    componentDidCatch() {
+        if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.error('Error in Waitlist route')
+        }
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-white px-4">
+                    <div className="max-w-md text-center">
+                        <h1 className="text-2xl font-semibold mb-4 text-black">Something went wrong.</h1>
+                        <p className="text-gray-600 mb-6">Please refresh the page and try again.</p>
+                    </div>
+                </div>
+            )
+        }
+
+        return this.props.children
+    }
+}
+
+const WaitlistWithBoundary = () => (
+    <WaitlistErrorBoundary>
+        <Waitlist />
+    </WaitlistErrorBoundary>
+)
+
+export default WaitlistWithBoundary
