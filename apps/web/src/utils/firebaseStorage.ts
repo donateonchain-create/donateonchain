@@ -34,7 +34,6 @@ async function kvDelete(collectionName: string, key: string) {
   return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
 }
 
-//function to save data to Firestore
 export const saveToFirebase = async (collectionName: string, documentId: string, data: any) => {
   try {
     const dataToSave = {
@@ -49,7 +48,6 @@ export const saveToFirebase = async (collectionName: string, documentId: string,
   }
 }
 
-//  function to get data from Firestore
 export const getFromFirebase = async (collectionName: string, documentId: string) => {
   try {
     const result = await kvGet(collectionName, documentId)
@@ -60,7 +58,6 @@ export const getFromFirebase = async (collectionName: string, documentId: string
   }
 }
 
-//  function to get all documents from a collection
 export const getAllFromFirebase = async (collectionName: string) => {
   try {
     const rows = await kvList(collectionName)
@@ -74,7 +71,6 @@ export const getAllFromFirebase = async (collectionName: string) => {
   }
 }
 
-//   function to update data in Firestore
 export const updateFirebase = async (collectionName: string, documentId: string, data: any) => {
   try {
     const existing = await getFromFirebase(collectionName, documentId)
@@ -90,7 +86,6 @@ export const updateFirebase = async (collectionName: string, documentId: string,
   }
 }
 
-//   function to delete data from Firestore
 export const deleteFromFirebase = async (collectionName: string, documentId: string) => {
   try {
     await kvDelete(collectionName, documentId)
@@ -101,7 +96,6 @@ export const deleteFromFirebase = async (collectionName: string, documentId: str
   }
 }
 
-// Design index (on-chain id -> IPFS cids)
 export const saveDesignIndex = async (designId: string, index: { metadataCid: string; previewCid?: string; designCid?: string }) => {
   return await saveToFirebase('designIndex', designId, index)
 }
@@ -110,7 +104,6 @@ export const getDesignIndex = async (designId: string) => {
   return await getFromFirebase('designIndex', designId)
 }
 
-// Orders
 export const saveOrder = async (order: { buyer: string; items: any[]; totalHBAR: string; txHashes: string[]; createdAt?: string }) => {
   const id = `${order.buyer.toLowerCase()}_${Date.now()}`
   return await saveToFirebase('orders', id, { ...order, createdAt: new Date().toISOString() })
@@ -121,7 +114,6 @@ export const getOrdersByWallet = async (walletAddress: string) => {
   return all.filter((o: any) => o.buyer?.toLowerCase() === walletAddress.toLowerCase())
 }
 
-// User-specific functions
 export const saveUserData = async (walletAddress: string, data: any) => {
   return await saveToFirebase('users', walletAddress.toLowerCase(), data)
 }
@@ -130,7 +122,6 @@ export const getUserData = async (walletAddress: string) => {
   return await getFromFirebase('users', walletAddress.toLowerCase())
 }
 
-// Design-specific functions
 export const saveUserDesign = async (walletAddress: string, designId: string, data: any) => {
   const result = await saveToFirebase('userDesigns', `${walletAddress.toLowerCase()}_${designId}`, data)
   return result;
@@ -139,7 +130,7 @@ export const saveUserDesign = async (walletAddress: string, designId: string, da
 export const getUserDesigns = async (walletAddress: string) => {
   try {
     const allDesigns = await getAllFromFirebase('userDesigns');
-    const userDesigns = allDesigns.filter((design: any) => 
+    const userDesigns = allDesigns.filter((design: any) =>
       design.walletAddress?.toLowerCase() === walletAddress.toLowerCase()
     );
     return userDesigns;
@@ -157,7 +148,7 @@ export const saveNGODesign = async (ngoWallet: string, designId: string, data: a
 export const getNGODesigns = async (ngoWallet: string) => {
   try {
     const allDesigns = await getAllFromFirebase('ngoDesigns');
-    const ngoDesigns = allDesigns.filter((design: any) => 
+    const ngoDesigns = allDesigns.filter((design: any) =>
       design.walletAddress?.toLowerCase() === ngoWallet.toLowerCase()
     );
     return ngoDesigns;
@@ -167,7 +158,6 @@ export const getNGODesigns = async (ngoWallet: string) => {
   }
 }
 
-// Global designs collection functions (for Home and Shop)
 export const saveToGlobalDesigns = async (designId: string, designData: any) => {
   return await saveToFirebase('alldesigns', designId, designData)
 }
@@ -195,11 +185,11 @@ export const deleteDesignEverywhere = async (designId: number) => {
     }
     await deleteFromFirebase('designIndex', designId.toString())
     await removeFromGlobalDesigns(designId.toString())
-    
+
     const existingDesigns = JSON.parse(localStorage.getItem('designs') || '[]')
     const filtered = existingDesigns.filter((d: any) => (d.onchainId?.toString() || d.id?.toString()) !== designId.toString())
     localStorage.setItem('designs', JSON.stringify(filtered))
-    
+
     return true
   } catch (e) {
     console.error('Failed full deletion for design', designId, e)
@@ -207,7 +197,6 @@ export const deleteDesignEverywhere = async (designId: number) => {
   }
 }
 
-// Cart functions
 export const saveCart = async (walletAddress: string, cartItems: any) => {
   try {
     const docId = walletAddress.toLowerCase();
@@ -230,14 +219,13 @@ export const getCart = async (walletAddress: string) => {
   }
 }
 
-// Purchase/Donation tracking
 export const savePurchase = async (walletAddress: string, purchaseData: any) => {
   return await saveToFirebase('purchases', `${walletAddress.toLowerCase()}_${Date.now()}`, purchaseData)
 }
 
 export const getUserPurchases = async (walletAddress: string) => {
   const allPurchases = await getAllFromFirebase('purchases')
-  return allPurchases.filter((purchase: any) => 
+  return allPurchases.filter((purchase: any) =>
     purchase.purchasedBy?.toLowerCase() === walletAddress.toLowerCase()
   )
 }
@@ -248,12 +236,11 @@ export const saveDonation = async (walletAddress: string, donationData: any) => 
 
 export const getUserDonations = async (walletAddress: string) => {
   const allDonations = await getAllFromFirebase('donations')
-  return allDonations.filter((donation: any) => 
+  return allDonations.filter((donation: any) =>
     donation.donorAddress?.toLowerCase() === walletAddress.toLowerCase()
   )
 }
 
-// User profile functions
 export const saveUserProfile = async (walletAddress: string, profileData: any) => {
   const result = await saveToFirebase('userProfiles', walletAddress.toLowerCase(), profileData);
   return result;
@@ -264,7 +251,6 @@ export const getUserProfile = async (walletAddress: string) => {
   return result;
 }
 
-// NGO profile functions
 export const saveNgoProfile = async (walletAddress: string, profileData: any) => {
   const result = await saveToFirebase('ngoProfiles', walletAddress.toLowerCase(), profileData);
   return result;
@@ -299,7 +285,6 @@ async function uploadBlobToIPFS(blob: Blob, fileName: string): Promise<string | 
   }
 }
 
-// Upload image to IPFS (via backend)
 export const uploadImageToFirebase = async (walletAddress: string, imageType: 'banner' | 'profile', base64Image: string): Promise<string | null> => {
   try {
     const blob = base64ToBlob(base64Image)
@@ -311,17 +296,16 @@ export const uploadImageToFirebase = async (walletAddress: string, imageType: 'b
   }
 }
 
-// Upload design image to IPFS (via backend)
 export const uploadDesignImageToFirebase = async (designId: string, imageType: 'front' | 'back', imageDataUrl: string): Promise<string | null> => {
   try {
-    
-    
+
+
     const response = await fetch(imageDataUrl)
     let blob = await response.blob()
-    
-    
+
+
     if (blob.type !== 'image/png') {
-   
+
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       if (ctx) {
@@ -339,8 +323,8 @@ export const uploadDesignImageToFirebase = async (designId: string, imageType: '
         })
       }
     }
-    
-   
+
+
     const fileName = `${designId}_${imageType}.png`
     return await uploadBlobToIPFS(blob, fileName)
   } catch (error) {
@@ -352,23 +336,23 @@ export const uploadDesignImageToFirebase = async (designId: string, imageType: '
 
 export const saveUserProfileWithImages = async (walletAddress: string, profileData: any) => {
   try {
-  
-    
+
+
     let bannerImageUrl = profileData.bannerImage
     let profileImageUrl = profileData.profileImage
-    
+
 
     if (profileData.bannerImage && profileData.bannerImage.startsWith('data:')) {
       console.log('Uploading banner image...')
       bannerImageUrl = await uploadImageToFirebase(walletAddress, 'banner', profileData.bannerImage)
     }
-    
+
 
     if (profileData.profileImage && profileData.profileImage.startsWith('data:')) {
       console.log('Uploading profile image...')
       profileImageUrl = await uploadImageToFirebase(walletAddress, 'profile', profileData.profileImage)
     }
-    
+
 
     const profileToSave = {
       name: profileData.name,
@@ -376,10 +360,10 @@ export const saveUserProfileWithImages = async (walletAddress: string, profileDa
       bannerImage: bannerImageUrl,
       profileImage: profileImageUrl
     }
-    
-  
+
+
     const result = await saveToFirebase('userProfiles', walletAddress.toLowerCase(), profileToSave);
-  
+
     return result
   } catch (error) {
     console.error('Error saving user profile with images:', error)
@@ -390,23 +374,23 @@ export const saveUserProfileWithImages = async (walletAddress: string, profileDa
 
 export const saveNgoProfileWithImages = async (walletAddress: string, profileData: any) => {
   try {
-  
-    
+
+
     let bannerImageUrl = profileData.bannerImage
     let profileImageUrl = profileData.profileImage
-    
+
 
     if (profileData.bannerImage && profileData.bannerImage.startsWith('data:')) {
       console.log('Uploading banner image...')
       bannerImageUrl = await uploadImageToFirebase(walletAddress, 'banner', profileData.bannerImage)
     }
-    
+
 
     if (profileData.profileImage && profileData.profileImage.startsWith('data:')) {
       console.log('Uploading profile image...')
       profileImageUrl = await uploadImageToFirebase(walletAddress, 'profile', profileData.profileImage)
     }
-    
+
 
     const profileToSave = {
       name: profileData.name,
@@ -419,10 +403,10 @@ export const saveNgoProfileWithImages = async (walletAddress: string, profileDat
       contactEmail: profileData.contactEmail,
       websiteLink: profileData.websiteLink
     }
-    
-  
+
+
     const result = await saveToFirebase('ngoProfiles', walletAddress.toLowerCase(), profileToSave);
-  
+
     return result
   } catch (error) {
     console.error('Error saving NGO profile with images:', error)
@@ -432,10 +416,10 @@ export const saveNgoProfileWithImages = async (walletAddress: string, profileDat
 
 export const saveNgoApplication = async (ngoData: any) => {
   try {
-  
+
     const docId = ngoData.connectedWalletAddress?.toLowerCase() || ngoData.walletAddress?.toLowerCase() || Date.now().toString();
     const result = await saveToFirebase('ngoApplications', docId, ngoData);
-  
+
     return result;
   } catch (error) {
     console.error('Error saving NGO application:', error);
@@ -445,9 +429,9 @@ export const saveNgoApplication = async (ngoData: any) => {
 
 export const getNgoApplications = async () => {
   try {
-  
+
     const result = await getAllFromFirebase('ngoApplications');
-  
+
     return result;
   } catch (error) {
     console.error('Error getting NGO applications:', error);
@@ -457,10 +441,10 @@ export const getNgoApplications = async () => {
 
 export const getNgoApplicationByWallet = async (walletAddress: string) => {
   try {
-  
+
     const docId = walletAddress.toLowerCase();
     const result = await getFromFirebase('ngoApplications', docId);
-  
+
     return result;
   } catch (error) {
     console.error('Error getting NGO application:', error);
@@ -599,23 +583,23 @@ export const uploadFileToFirebase = async (walletAddress: string, file: File, fo
 
 export const migrateDesignImagesToFirebase = async (design: any, walletAddress: string, designType: 'user' | 'ngo') => {
   try {
-  
+
     let frontUrl = design.frontDesign?.url || null
     let backUrl = design.backDesign?.url || null
-    
+
 
     if (design.frontDesign?.dataUrl && !design.frontDesign?.url) {
       console.log('Migrating front image to Firebase Storage...')
       frontUrl = await uploadDesignImageToFirebase(design.id.toString(), 'front', design.frontDesign.dataUrl)
       console.log('Front image migrated:', frontUrl)
     }
-    
+
     if (design.backDesign?.dataUrl && !design.backDesign?.url) {
       console.log('Migrating back image to Firebase Storage...')
       backUrl = await uploadDesignImageToFirebase(design.id.toString(), 'back', design.backDesign.dataUrl)
       console.log('Back image migrated:', backUrl)
     }
-    
+
 
     const updatedDesign = {
       ...design,
@@ -628,17 +612,17 @@ export const migrateDesignImagesToFirebase = async (design: any, walletAddress: 
         url: backUrl
       } : null
     }
-    
+
 
     if (designType === 'ngo') {
       await saveNGODesign(walletAddress, design.id.toString(), updatedDesign)
     } else {
       await saveUserDesign(walletAddress, design.id.toString(), updatedDesign)
     }
-    
+
 
     await saveToGlobalDesigns(design.id.toString(), updatedDesign)
-    
+
     console.log('Design images migrated and saved to Firebase')
     return updatedDesign
   } catch (error) {

@@ -12,6 +12,7 @@ import {
 } from '../components/management'
 import type { ColumnDef } from '../components/management'
 import { managementNgos } from '../data/databank'
+import { fetchAdminNgos } from '../services/api'
 import ConfirmationModal from '../components/ConfirmationModal'
 
 interface NgoRow {
@@ -56,12 +57,45 @@ const NgoManagement = () => {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const data = useMockData ? managementNgos : []
+  const [liveData, setLiveData] = useState<NgoRow[]>([])
+  const data = useMockData ? managementNgos : liveData
 
   useEffect(() => {
-    const t = setTimeout(() => setIsLoading(false), 800)
-    return () => clearTimeout(t)
-  }, [])
+    let active = true
+    if (useMockData) {
+      const t = setTimeout(() => { if (active) setIsLoading(false) }, 800)
+      return () => { active = false; clearTimeout(t) }
+    } else {
+      setIsLoading(true)
+      // Since the table handles client-side filtering/pagination across all data,
+      // we fetch a large batch. In a fully optimized app, pagination would be done purely server-side.
+      fetchAdminNgos(1, 100)
+        .then((res) => {
+          if (!active) return
+          const mappedNgos: NgoRow[] = res.items.map((item: any) => ({
+            id: item.id,
+            name: item.name || 'Unknown NGO',
+            logoUrl: '', // Add logo field when available
+            country: item.country || 'Unknown',
+            wallet: item.walletAddress || '',
+            status: item.kycStatus === 'approved' ? 'approved' : item.kycStatus === 'rejected' ? 'rejected' : 'pending',
+            campaignsCount: 0, // Mock or fetch relative counts
+            totalDonations: '$0', // Mock
+            dateRegistered: new Date(item.createdAt).toISOString().split('T')[0]
+          }))
+          setLiveData(mappedNgos)
+          setError(null)
+        })
+        .catch((err) => {
+          console.error(err)
+          if (active) setError('Failed to fetch NGOs')
+        })
+        .finally(() => {
+          if (active) setIsLoading(false)
+        })
+      return () => { active = false }
+    }
+  }, [useMockData])
 
   const metrics = [
     { label: 'Total NGOs', value: data.length, icon: Users },
@@ -294,13 +328,15 @@ const NgoManagement = () => {
       {!isLoading && filtered.length === 0 ? (
         <EmptyState
           message="No NGOs found"
-          cta={{ label: 'Clear filters', onClick: () => {
-            setSearchQuery('')
-            setStatusFilter('')
-            setDateFrom('')
-            setDateTo('')
-            setSortBy('newest')
-          }}}
+          cta={{
+            label: 'Clear filters', onClick: () => {
+              setSearchQuery('')
+              setStatusFilter('')
+              setDateFrom('')
+              setDateTo('')
+              setSortBy('newest')
+            }
+          }}
           variant="ngo"
         />
       ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
-import { getAllWaitlistEntries } from '../../waitlist/waitlistFirebase'
+import { fetchAdminWaitlist } from '../services/api'
+import { useAdminMockData } from '../context/AdminMockDataContext'
 
 interface WaitlistEntry {
   id: string
@@ -34,28 +35,42 @@ function downloadCsv(entries: WaitlistEntry[]) {
 }
 
 const WaitlistManagement = () => {
+  const { useMockData } = useAdminMockData()
   const [entries, setEntries] = useState<WaitlistEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    let active = true
     const load = async () => {
       try {
-        const data = await getAllWaitlistEntries()
-        const sorted = [...data].sort((a: WaitlistEntry, b: WaitlistEntry) => {
-          const aTime = a.joinedAt ? new Date(a.joinedAt).getTime() : 0
-          const bTime = b.joinedAt ? new Date(b.joinedAt).getTime() : 0
-          return bTime - aTime
-        })
-        setEntries(sorted)
-      } catch {
-        setError('Unable to load waitlist entries.')
+        setIsLoading(true)
+        if (useMockData) {
+          if (active) setEntries([
+            { id: 'mock-1', email: 'designer@example.com', role: 'designer', joinedAt: new Date().toISOString() },
+            { id: 'mock-2', email: 'ngo@example.com', role: 'ngo', joinedAt: new Date().toISOString() }
+          ])
+        } else {
+          const res = await fetchAdminWaitlist(1, 1000)
+          if (!active) return
+          const mapped = res.items.map((item: any) => ({
+            id: item.id,
+            email: item.email,
+            role: item.role,
+            joinedAt: item.createdAt
+          }))
+          setEntries(mapped)
+        }
+      } catch (err) {
+        console.error(err)
+        if (active) setError('Unable to load waitlist entries.')
       } finally {
-        setIsLoading(false)
+        if (active) setIsLoading(false)
       }
     }
     load()
-  }, [])
+    return () => { active = false }
+  }, [useMockData])
 
   return (
     <div className="space-y-6">

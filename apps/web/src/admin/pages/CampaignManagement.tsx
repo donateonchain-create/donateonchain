@@ -12,6 +12,7 @@ import {
 } from '../components/management'
 import type { ColumnDef } from '../components/management'
 import { managementCampaigns } from '../data/databank'
+import { fetchAdminCampaigns } from '../services/api'
 import ConfirmationModal from '../components/ConfirmationModal'
 
 interface CampaignRow {
@@ -56,12 +57,43 @@ const CampaignManagement = () => {
   const [showFlagModal, setShowFlagModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const data = useMockData ? managementCampaigns : []
+  const [liveData, setLiveData] = useState<CampaignRow[]>([])
+  const data = useMockData ? managementCampaigns : liveData
 
   useEffect(() => {
-    const t = setTimeout(() => setIsLoading(false), 800)
-    return () => clearTimeout(t)
-  }, [])
+    let active = true
+    if (useMockData) {
+      const t = setTimeout(() => { if (active) setIsLoading(false) }, 800)
+      return () => { active = false; clearTimeout(t) }
+    } else {
+      setIsLoading(true)
+      fetchAdminCampaigns(1, 100)
+        .then((res) => {
+          if (!active) return
+          const mappedCampaigns: CampaignRow[] = res.items.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            ngoName: item.ngoAddress ? `NGO ${item.ngoAddress.substring(0, 6)}...` : 'Unknown NGO',
+            status: item.vettedApproved ? 'active' : 'pending',
+            amountRaised: 0, // Mock or fetch aggregated donations
+            target: parseFloat(item.targetFunding) || 0,
+            donorsCount: 0, // Mock
+            endDate: item.endDate ? new Date(item.endDate).toISOString().split('T')[0] : 'Open',
+            flagged: !item.vettedApproved,
+          }))
+          setLiveData(mappedCampaigns)
+          setError(null)
+        })
+        .catch((err) => {
+          console.error(err)
+          if (active) setError('Failed to fetch campaigns')
+        })
+        .finally(() => {
+          if (active) setIsLoading(false)
+        })
+      return () => { active = false }
+    }
+  }, [useMockData])
 
   const metrics = [
     { label: 'Total Campaigns', value: data.length, icon: Megaphone },
@@ -280,13 +312,15 @@ const CampaignManagement = () => {
       {!isLoading && filtered.length === 0 ? (
         <EmptyState
           message="No campaigns match your filters"
-          cta={{ label: 'Clear filters', onClick: () => {
-            setSearchQuery('')
-            setStatusFilter('')
-            setDateFrom('')
-            setDateTo('')
-            setSortBy('newest')
-          }}}
+          cta={{
+            label: 'Clear filters', onClick: () => {
+              setSearchQuery('')
+              setStatusFilter('')
+              setDateFrom('')
+              setDateTo('')
+              setSortBy('newest')
+            }
+          }}
           variant="campaign"
         />
       ) : (
