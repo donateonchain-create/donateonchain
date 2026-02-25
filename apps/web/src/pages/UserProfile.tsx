@@ -67,7 +67,7 @@ const UserProfile = () => {
     });
     const [isDesigner, setIsDesigner] = useState(false);
     const [isNgo, setIsNgo] = useState(false);
-    
+
     const [createdCampaigns, setCreatedCampaigns] = useState<any[]>([]);
     const [isCreateCampaignModalOpen, setIsCreateCampaignModalOpen] = useState(false);
     const [orders, setOrders] = useState<any[]>([]);
@@ -78,7 +78,7 @@ const UserProfile = () => {
     const [campaignErrorText, setCampaignErrorText] = useState('');
     const inFlightRef = useRef(false)
 
-   
+
     useEffect(() => {
         const loadProfile = async () => {
             if (address && isConnected) {
@@ -129,7 +129,7 @@ const UserProfile = () => {
         }
             }
         };
-        
+
         loadProfile();
     }, [address, isConnected]);
 
@@ -149,13 +149,13 @@ const UserProfile = () => {
             }
         };
         checkRoles();
-        
+
         const interval = setInterval(checkRoles, 10000);
         return () => clearInterval(interval);
     }, [address, isConnected]);
 
-    
-   
+
+
     useEffect(() => {
         const loadDesigns = async () => {
             if (address && isConnected) {
@@ -192,18 +192,8 @@ const UserProfile = () => {
                     }
                     setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
                 }
-            } else {
-                
-        setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
-            }
-        
-
-        const savedTab = localStorage.getItem('activeProfileTab');
-        if (savedTab && (savedTab === 'NFTs' || savedTab === 'History' || savedTab === 'Created')) {
-            setActiveCategory(savedTab as 'NFTs' | 'History' || 'Created');
-        }
         };
-        
+
         loadDesigns();
     }, [address, isConnected]);
 
@@ -247,17 +237,18 @@ const UserProfile = () => {
                     }
                 }
             } else {
+                // No connection fallback
             }
 
-        setStatistics({
-            causesSupported: 0, // No longer calculated from donationHistory
-            totalDonated: 0, // No longer calculated from donationHistory
-            totalProfit: 0, // No longer calculated from purchaseHistory
+            setStatistics({
+                causesSupported: 0, // No longer calculated from donationHistory
+                totalDonated: 0, // No longer calculated from donationHistory
+                totalProfit: 0, // No longer calculated from purchaseHistory
                 totalDesigns: createdDesigns.length
-        });
-        setIsLoading(false);
+            });
+            setIsLoading(false);
         };
-        
+
         calculateStats();
     }, [createdDesigns, address, isConnected]);
 
@@ -279,7 +270,7 @@ const UserProfile = () => {
     };
 
     const handleEditProfile = () => {
-        
+
         setFormData({
             name: profileData.name,
             bio: profileData.bio
@@ -291,20 +282,20 @@ const UserProfile = () => {
 
     const handleCloseModal = () => {
         if (!isSaving) {
-        setIsEditModalOpen(false);
+            setIsEditModalOpen(false);
         }
     };
 
     const handleSaveProfile = async () => {
         setIsSaving(true);
-        
+
         const updatedProfile = {
             name: formData.name,
             bio: formData.bio,
             bannerImage: bannerImage || profileData.bannerImage,
             profileImage: profileImage || profileData.profileImage
         };
-        
+
         setProfileData(prev => ({
             ...prev,
             name: formData.name,
@@ -312,7 +303,7 @@ const UserProfile = () => {
             bannerImage: bannerImage || prev.bannerImage,
             profileImage: profileImage || prev.profileImage
         }));
-        
+
         localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
 
         if (address && isConnected) {
@@ -327,12 +318,12 @@ const UserProfile = () => {
             }
         } else {
         }
-        
+
         setIsSaving(false);
         setIsEditModalOpen(false);
-      
+
         setShowSuccessMessage(true);
-        
+
         setTimeout(() => {
             setShowSuccessMessage(false);
         }, 3000);
@@ -377,11 +368,11 @@ const UserProfile = () => {
             if (!address) throw new Error('Wallet not connected');
             let imageCid: string | null = null
             if (!campaignData.coverImageFile) {
-              throw new Error('Campaign image is required')
+                throw new Error('Campaign image is required')
             }
             imageCid = await uploadFileToIPFS(campaignData.coverImageFile)
             if (!imageCid) {
-              throw new Error('Image upload failed; campaign will not be created')
+                throw new Error('Image upload failed; campaign will not be created')
             }
             const imageUrl = getIPFSURL(imageCid);
             // During campaign creation: create the onchain metadata object with 'goal' clearly set
@@ -394,20 +385,20 @@ const UserProfile = () => {
             await storeHash(imageCid, address!);
             await storeHash(metadataCid, address!);
             const { receipt } = await createCampaignByNGO({ designer: address as `0x${string}`, title: campaignData.campaignTitle, description: campaignData.description, imageCid: imageCid, metadataCid, targetHBAR: goal });
-            
+
             const receiptStatus = receipt?.status as string | number | undefined
             if (!receipt || receiptStatus === 'reverted' || receiptStatus === 0 || receiptStatus === '0x0') {
                 throw new Error('Campaign creation transaction failed on-chain')
             }
-            
+
             setIsCampaignCreatedSuccessfully(true)
             setIsCreateCampaignModalOpen(false)
             // New logic: refetch campaigns after creation
             do {
-              const chainCampaigns = await listAllCampaignsFromChain();
-              const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
-              setCreatedCampaigns(userChain);
-            } while(false);
+                const chainCampaigns = await listAllCampaignsFromChain();
+                const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
+                setCreatedCampaigns(userChain);
+            } while (false);
         } catch (err: any) {
             setIsCampaignCreateError(true)
             setCampaignErrorText(err?.message || 'Failed to create campaign')
@@ -430,28 +421,28 @@ const UserProfile = () => {
     return (
         <div className="min-h-screen bg-white">
             <Header />
-            
-         
+
+
             <div className="pt-0 max-w-[1440px] mx-auto">
-             
+
                 <div className="relative w-full h-[150px] md:h-[250px] bg-black ">
-                   
+
                     {profileData.bannerImage && (
-                        <img 
-                            src={profileData.bannerImage} 
-                            alt="Banner" 
+                        <img
+                            src={profileData.bannerImage}
+                            alt="Banner"
                             className="w-full h-full object-cover"
                         />
                     )}
-                    
-                    
+
+
                     <div className="absolute bottom-[-25%]  left-4 md:left-7">
                         <div className="relative">
                             <div className="w-24 h-24 md:w-32 md:h-32 bg-yellow-400 rounded-full flex items-center justify-center overflow-hidden">
                                 {profileData.profileImage ? (
-                                    <img 
-                                        src={profileData.profileImage} 
-                                        alt="Profile" 
+                                    <img
+                                        src={profileData.profileImage}
+                                        alt="Profile"
                                         className="w-full h-full object-cover rounded-full"
                                     />
                                 ) : (
@@ -464,17 +455,17 @@ const UserProfile = () => {
                         </div>
                     </div>
                 </div>
-                
-              
+
+
                 <div className="px-4 md:px-7 pt-12 md:pt-24">
                     <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-12">
-                      
+
                         <div className="flex-1">
                             <h1 className="text-2xl md:text-4xl font-bold text-black mb-2">{profileData.name || 'User'}</h1>
                             {profileData.bio && (
                                 <p className="text-black text-sm md:text-lg leading-relaxed max-w-md mb-3">
-                                {profileData.bio}
-                            </p>
+                                    {profileData.bio}
+                                </p>
                             )}
                             {isConnected && address && (
                                 <div className="flex flex-wrap items-center gap-2">
@@ -507,50 +498,50 @@ const UserProfile = () => {
                                 </div>
                             )}
                         </div>
-                        
-                   
+
+
                         <div className="flex flex-row flex-wrap gap-3">
                             <Button variant="secondary" size="lg" className="gap-2" onClick={handleEditProfile}>
                                 Edit Profile
                             </Button>
-                            
+
                             {isDesigner ? (
-                                <Button 
-                                    variant="primary-bw" 
-                                    size="lg" 
-                                    className="gap-2" 
+                                <Button
+                                    variant="primary-bw"
+                                    size="lg"
+                                    className="gap-2"
                                     onClick={() => navigate('/create-design', { state: { fromNgo: false } })}
                                 >
                                     <Plus size={20} />
                                     Create Design
                                 </Button>
                             ) : (
-                                <Button 
-                                    variant="secondary" 
-                                    size="lg" 
-                                    className="gap-2" 
+                                <Button
+                                    variant="secondary"
+                                    size="lg"
+                                    className="gap-2"
                                     onClick={() => navigate('/become-a-designer', { state: { fromNgo: false } })}
                                 >
                                     <Plus size={20} />
                                     Become a Designer
                                 </Button>
                             )}
-                            
+
                             {isNgo ? (
-                                <Button 
-                                    variant="primary-bw" 
-                                    size="lg" 
-                                    className="gap-2" 
+                                <Button
+                                    variant="primary-bw"
+                                    size="lg"
+                                    className="gap-2"
                                     onClick={() => setIsCreateCampaignModalOpen(true)}
                                 >
                                     <Plus size={20} />
                                     Create Campaign
                                 </Button>
                             ) : (
-                                <Button 
-                                    variant="secondary" 
-                                    size="lg" 
-                                    className="gap-2" 
+                                <Button
+                                    variant="secondary"
+                                    size="lg"
+                                    className="gap-2"
                                     onClick={() => navigate('/become-an-ngo')}
                                 >
                                     <Plus size={20} />
@@ -560,68 +551,68 @@ const UserProfile = () => {
                         </div>
                     </div>
                 </div>
-                
-              
+
+
                 <div className="px-4 md:px-7">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    
-                    <div className="bg-black rounded-lg p-6">
-                        <h3 className="text-white text-sm font-medium mb-2">Causes Supported</h3>
-                        <p className="text-white text-3xl md:text-4xl font-bold">{statistics.causesSupported}</p>
-                    </div>
-                    
-                  
-                    <div className="bg-black rounded-lg p-6">
-                        <h3 className="text-white text-sm font-medium mb-2">Total Donated</h3>
-                        <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalDonated.toLocaleString()} HBAR</p>
-                    </div>
-                    
-                   
-                    {isDesigner && (
-                        <div className="bg-black rounded-lg p-6">
-                            <h3 className="text-white text-sm font-medium mb-2">Total Profit</h3>
-                            <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalProfit.toLocaleString()} HBAR</p>
-                        </div>
-                    )}
-                    
-                 
-                    {isDesigner && (
-                        <div className="bg-black rounded-lg p-6">
-                            <h3 className="text-white text-sm font-medium mb-2">Total Designs</h3>
-                            <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalDesigns}</p>
-                        </div>
-                    )}
 
-                    {isNgo && (
                         <div className="bg-black rounded-lg p-6">
-                            <h3 className="text-white text-sm font-medium mb-2">Total Campaigns</h3>
-                            <p className="text-white text-3xl md:text-4xl font-bold">{createdCampaigns.length}</p>
+                            <h3 className="text-white text-sm font-medium mb-2">Causes Supported</h3>
+                            <p className="text-white text-3xl md:text-4xl font-bold">{statistics.causesSupported}</p>
                         </div>
-                    )}
+
+
+                        <div className="bg-black rounded-lg p-6">
+                            <h3 className="text-white text-sm font-medium mb-2">Total Donated</h3>
+                            <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalDonated.toLocaleString()} HBAR</p>
+                        </div>
+
+
+                        {isDesigner && (
+                            <div className="bg-black rounded-lg p-6">
+                                <h3 className="text-white text-sm font-medium mb-2">Total Profit</h3>
+                                <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalProfit.toLocaleString()} HBAR</p>
+                            </div>
+                        )}
+
+
+                        {isDesigner && (
+                            <div className="bg-black rounded-lg p-6">
+                                <h3 className="text-white text-sm font-medium mb-2">Total Designs</h3>
+                                <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalDesigns}</p>
+                            </div>
+                        )}
+
+                        {isNgo && (
+                            <div className="bg-black rounded-lg p-6">
+                                <h3 className="text-white text-sm font-medium mb-2">Total Campaigns</h3>
+                                <p className="text-white text-3xl md:text-4xl font-bold">{createdCampaigns.length}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
-                
-             
+
+
                 <div className="px-4 md:px-7 mt-20">
-                  
+
                     <div className="flex gap-2 mb-8 flex-wrap">
-                        <Button 
-                            variant={activeCategory === 'NFTs' ? 'primary-bw' : 'secondary'} 
+                        <Button
+                            variant={activeCategory === 'NFTs' ? 'primary-bw' : 'secondary'}
                             size="lg"
                             onClick={() => handleCategoryChange('NFTs')}
                         >
                             NFTs
                         </Button>
-                        <Button 
-                            variant={activeCategory === 'History' ? 'primary-bw' : 'secondary'} 
+                        <Button
+                            variant={activeCategory === 'History' ? 'primary-bw' : 'secondary'}
                             size="lg"
                             onClick={() => handleCategoryChange('History')}
                         >
                             History
                         </Button>
                         {isDesigner && (
-                            <Button 
-                                variant={activeCategory === 'Created' ? 'primary-bw' : 'secondary'} 
+                            <Button
+                                variant={activeCategory === 'Created' ? 'primary-bw' : 'secondary'}
                                 size="lg"
                                 onClick={() => handleCategoryChange('Created')}
                             >
@@ -629,8 +620,8 @@ const UserProfile = () => {
                             </Button>
                         )}
                         {isNgo && (
-                            <Button 
-                                variant={activeCategory === 'Campaigns' ? 'primary-bw' : 'secondary'} 
+                            <Button
+                                variant={activeCategory === 'Campaigns' ? 'primary-bw' : 'secondary'}
                                 size="lg"
                                 onClick={() => handleCategoryChange('Campaigns')}
                             >
@@ -638,8 +629,8 @@ const UserProfile = () => {
                             </Button>
                         )}
                     </div>
-                    
-                   
+
+
                     {activeCategory === 'NFTs' && (
                         <div className="mb-40">
                             {isLoadingNfts ? (
@@ -716,30 +707,30 @@ const UserProfile = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-40">
                             {createdDesigns.length > 0 ? (
                                 createdDesigns.map((design) => (
-                                    <div 
-                                        key={design.id} 
+                                    <div
+                                        key={design.id}
                                         className="bg-white rounded-3xl p-4 hover:border hover:border-black/10 transition-colors cursor-pointer"
                                         onClick={() => navigate(`/product/${design.id}`)}
                                     >
                                         <div className="rounded-2xl bg-[#eeeeee] mb-4">
                                             <div className="aspect-square rounded-xl overflow-hidden bg-[#eeeeee] flex items-center justify-center relative">
-                                             
-                                                <img 
-                                                    src="/shirtfront.png" 
-                                                    alt="Shirt Mockup" 
+
+                                                <img
+                                                    src="/shirtfront.png"
+                                                    alt="Shirt Mockup"
                                                     className="absolute inset-0 w-full h-full object-cover rounded-xl"
-                                                    style={{ 
-                                                        filter: design.color === '#FFFFFF' ? 'none' : 
-                                                               design.color === '#000000' ? 'brightness(0)' : 'none'
+                                                    style={{
+                                                        filter: design.color === '#FFFFFF' ? 'none' :
+                                                            design.color === '#000000' ? 'brightness(0)' : 'none'
                                                     }}
                                                 />
-                                                
-                                               
+
+
                                                 {(design.frontDesign?.dataUrl || design.frontDesign?.url) && (
-                                                    <div 
+                                                    <div
                                                         className="absolute"
-                                                        style={{ 
-                                                            width: '65%', 
+                                                        style={{
+                                                            width: '65%',
                                                             height: 'auto',
                                                             maxWidth: '145px',
                                                             maxHeight: '200px',
@@ -748,15 +739,15 @@ const UserProfile = () => {
                                                             transform: 'translate(-50%, -50%)'
                                                         }}
                                                     >
-                                                        <img 
-                                                            src={design.frontDesign?.url || design.frontDesign?.dataUrl} 
-                                                            alt="Design" 
+                                                        <img
+                                                            src={design.frontDesign?.url || design.frontDesign?.dataUrl}
+                                                            alt="Design"
                                                             className="w-full h-full object-contain"
                                                         />
                                                     </div>
                                                 )}
-                                                
-                                                    
+
+
                                                 {!(design.frontDesign?.dataUrl || design.frontDesign?.url) && (
                                                     <div className="text-center text-gray-500">
                                                         <div className="text-4xl mb-2">👕</div>
@@ -812,16 +803,16 @@ const UserProfile = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-40">
                             {createdCampaigns.length > 0 ? (
                                 createdCampaigns.map((campaign) => (
-                                    <div 
-                                        key={campaign.onchainId || campaign.id} 
+                                    <div
+                                        key={campaign.onchainId || campaign.id}
                                         className="bg-white rounded-2xl overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
                                         onClick={() => navigate(`/campaign/${campaign.onchainId || campaign.id}`)}
                                     >
                                         <div className="relative h-48 bg-gray-200">
                                             {campaign.image && (
-                                                <img 
-                                                    src={campaign.image} 
-                                                    alt={campaign.title} 
+                                                <img
+                                                    src={campaign.image}
+                                                    alt={campaign.title}
                                                     className="w-full h-full object-cover"
                                                 />
                                             )}
@@ -835,8 +826,8 @@ const UserProfile = () => {
                                                     <span>Target: {campaign.target || 0} HBAR</span>
                                                 </div>
                                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                                    <div 
-                                                        className="bg-black h-2 rounded-full" 
+                                                    <div
+                                                        className="bg-black h-2 rounded-full"
                                                         style={{ width: `${Math.min((campaign.amountRaised || 0) / (campaign.target || 1) * 100, 100)}%` }}
                                                     ></div>
                                                 </div>
@@ -845,9 +836,8 @@ const UserProfile = () => {
                                                 <span className="text-xs text-gray-500">
                                                     Created: {new Date(campaign.createdAt || Date.now()).toLocaleDateString()}
                                                 </span>
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                    campaign.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                                                }`}>
+                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${campaign.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                                                    }`}>
                                                     {campaign.status || 'Active'}
                                                 </span>
                                             </div>
@@ -874,33 +864,33 @@ const UserProfile = () => {
                     )}
                 </div>
             </div>
-            
-            
+
+
             {isEditModalOpen && (
                 <>
-                   
-                    <div 
+
+                    <div
                         className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-sm z-50"
                         onClick={handleCloseModal}
                     />
-                    
-                    
+
+
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <div 
+                        <div
                             className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            
+
                             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                                <button 
+                                <button
                                     onClick={handleCloseModal}
                                     className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                                 >
                                     <X size={20} className="text-gray-600" />
                                 </button>
                                 <h2 className="text-xl font-semibold text-black">Edit profile</h2>
-                                <Button 
-                                    variant="primary-bw" 
+                                <Button
+                                    variant="primary-bw"
                                     size="sm"
                                     onClick={handleSaveProfile}
                                     disabled={isSaving}
@@ -915,16 +905,16 @@ const UserProfile = () => {
                                     )}
                                 </Button>
                             </div>
-                            
-                          
+
+
                             <div className="p-6">
-                              
+
                                 <div className="relative mb-6">
                                     <div className="w-full h-32 bg-black rounded-xl relative overflow-hidden">
                                         {bannerImage && (
-                                            <img 
-                                                src={bannerImage} 
-                                                alt="Banner" 
+                                            <img
+                                                src={bannerImage}
+                                                alt="Banner"
                                                 className="w-full h-full object-cover"
                                             />
                                         )}
@@ -939,14 +929,14 @@ const UserProfile = () => {
                                         </label>
                                     </div>
                                 </div>
-                                
-                               
+
+
                                 <div className="relative mb-6">
                                     <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center relative -mt-10 ml-4 overflow-hidden">
                                         {profileImage ? (
-                                            <img 
-                                                src={profileImage} 
-                                                alt="Profile" 
+                                            <img
+                                                src={profileImage}
+                                                alt="Profile"
                                                 className="w-full h-full object-cover rounded-full"
                                             />
                                         ) : (
@@ -963,10 +953,10 @@ const UserProfile = () => {
                                         </label>
                                     </div>
                                 </div>
-                                
-                               
+
+
                                 <div className="space-y-4">
-                                   
+
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Name
@@ -978,8 +968,8 @@ const UserProfile = () => {
                                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
                                         />
                                     </div>
-                                    
-                                   
+
+
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Bio
@@ -997,8 +987,8 @@ const UserProfile = () => {
                     </div>
                 </>
             )}
-            
-           
+
+
             {showSuccessMessage && (
                 <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-pulse">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1009,14 +999,14 @@ const UserProfile = () => {
             )}
 
             {isCreateCampaignModalOpen && (
-                <CreateCampaignModal 
+                <CreateCampaignModal
                     isOpen={isCreateCampaignModalOpen}
                     onClose={async () => {
                         setIsCreateCampaignModalOpen(false);
                         if (address && isConnected && isNgo) {
                             try {
                                 const allCampaigns = await listAllCampaignsFromChain();
-                                const userCampaigns = allCampaigns.filter((c: any) => 
+                                const userCampaigns = allCampaigns.filter((c: any) =>
                                     c.ngoWallet?.toLowerCase() === address.toLowerCase()
                                 );
                                 setCreatedCampaigns(userCampaigns);
@@ -1031,7 +1021,7 @@ const UserProfile = () => {
                     onSubmit={handleCreateCampaign}
                 />
             )}
-            
+
             <Footer />
 
             {isUploadingCampaign && (
@@ -1052,8 +1042,8 @@ const UserProfile = () => {
                         </div>
                         <h2 className="text-2xl font-bold mb-2">Campaign Created!</h2>
                         <p className="text-gray-600 mb-6">Your campaign has been created successfully.</p>
-                        <Button 
-                            variant="primary-bw" 
+                        <Button
+                            variant="primary-bw"
                             size="lg"
                             onClick={() => {
                                 setIsCampaignCreatedSuccessfully(false);

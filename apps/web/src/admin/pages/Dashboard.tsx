@@ -25,6 +25,7 @@ import {
   recentApprovedNgos,
   recentDesignsBought,
 } from '../data/databank'
+import { fetchAdminMetrics } from '../services/api'
 
 const metricLinks: Record<string, string> = {
   totalDonations: '/admin/dashboard',
@@ -48,14 +49,39 @@ const DASHBOARD_LOAD_DELAY_MS = 1200
 
 const Dashboard = () => {
   const { useMockData } = useAdminMockData()
-  const metrics = useMockData ? summaryMetrics : emptySummaryMetrics
+  const [liveMetrics, setLiveMetrics] = useState(emptySummaryMetrics)
+  const metrics = useMockData ? summaryMetrics : liveMetrics
   const [detailModal, setDetailModal] = useState<{ title: string; data: Record<string, string | number | string[]>; mode: 'donation' | 'ngo' | 'campaign' | 'transaction' } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const t = setTimeout(() => setIsLoading(false), DASHBOARD_LOAD_DELAY_MS)
-    return () => clearTimeout(t)
-  }, [])
+    let active = true
+    if (useMockData) {
+      const t = setTimeout(() => { if (active) setIsLoading(false) }, DASHBOARD_LOAD_DELAY_MS)
+      return () => { active = false; clearTimeout(t) }
+    } else {
+      setIsLoading(true)
+      fetchAdminMetrics()
+        .then((data) => {
+          if (!active) return
+          setLiveMetrics({
+            totalDonations: { value: `$${data.totalDonations}`, trend: 'live', subtext: 'Total platform donations' },
+            activeCampaigns: { value: data.activeCampaigns, trend: 'live', subtext: 'Currently running campaigns' },
+            totalNgos: { value: data.totalNgos, trend: 'live', subtext: 'Registered organizations' },
+            totalDesigners: { value: data.totalDesigners || 0, trend: 'live', subtext: 'Verified designers' },
+            pendingKycReviews: { value: data.pendingKycReviews, trend: 'live', subtext: 'Applications awaiting review' },
+            openComplaints: { value: data.openComplaints || 0, trend: 'live', subtext: 'Unresolved issues' },
+          })
+        })
+        .catch((err) => {
+          console.error(err)
+        })
+        .finally(() => {
+          if (active) setIsLoading(false)
+        })
+      return () => { active = false }
+    }
+  }, [useMockData])
 
   const openDetail = (title: string, data: Record<string, string | number | string[]>, mode: 'donation' | 'ngo' | 'campaign' | 'transaction') => {
     setDetailModal({ title, data, mode })

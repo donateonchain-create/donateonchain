@@ -365,7 +365,7 @@ async function handleMirrorEvent(log) {
       await upsertCampaignBase({ id: campaignId, ngoAddress: ngo, designerAddress: designer, targetAmount, deadline })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(CAMPAIGN_CREATED_REGISTRY_EVENT_ABI)
@@ -377,7 +377,7 @@ async function handleMirrorEvent(log) {
       await upsertCampaignBase({ id: campaignId, ngoAddress: ngo, designerAddress: designer, targetAmount: '0', deadline: '0' })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(CAMPAIGN_VETTED_EVENT_ABI)
@@ -397,7 +397,7 @@ async function handleMirrorEvent(log) {
       })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(FUNDS_CLAIMED_EVENT_ABI)
@@ -417,7 +417,7 @@ async function handleMirrorEvent(log) {
       })
       return
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(DONATION_MADE_EVENT_ABI)
@@ -427,7 +427,7 @@ async function handleMirrorEvent(log) {
       const amount = decoded.args.amount ? String(decoded.args.amount) : '0'
       await recordDonation({ campaignId, donor, amount, txHash })
     }
-  } catch {}
+  } catch { }
 
   try {
     const decoded = decodeWith(DONATION_MADE_MANAGER_EVENT_ABI)
@@ -437,7 +437,7 @@ async function handleMirrorEvent(log) {
       const amount = decoded.args.totalAmount ? String(decoded.args.totalAmount) : '0'
       await recordDonation({ campaignId, donor, amount, txHash })
     }
-  } catch {}
+  } catch { }
 }
 
 async function syncMirrorContractOnce(contractIdOrAddress, reqLogger) {
@@ -617,11 +617,11 @@ app.get('/api/mirror/logs', async (req, res) => {
     ...(contractIdOrAddress ? { contractIdOrAddress } : {}),
     ...(q.timestampGte || q.timestampLte
       ? {
-          timestamp: {
-            ...(q.timestampGte ? { gte: q.timestampGte } : {}),
-            ...(q.timestampLte ? { lte: q.timestampLte } : {}),
-          },
-        }
+        timestamp: {
+          ...(q.timestampGte ? { gte: q.timestampGte } : {}),
+          ...(q.timestampLte ? { lte: q.timestampLte } : {}),
+        },
+      }
       : {}),
   }
 
@@ -708,6 +708,86 @@ app.post('/api/waitlist', async (req, res) => {
   })
 
   res.status(201).json({ id: created.id, email: created.email })
+})
+
+app.get('/api/admin/dashboard/metrics', requireAdminApiKey, async (req, res) => {
+  try {
+    const [
+      totalDonationCount,
+      activeCampaigns,
+      totalNgos,
+      pendingKycReviews,
+    ] = await Promise.all([
+      prisma.donationEvent.count(),
+      prisma.campaign.count({ where: { vettedApproved: true } }),
+      prisma.ngo.count(),
+      prisma.kycVerification.count({ where: { status: 'pending' } }),
+    ])
+
+    res.json({
+      totalDonations: totalDonationCount,
+      activeCampaigns,
+      totalNgos,
+      totalDesigners: 0,
+      pendingKycReviews,
+      openComplaints: 0,
+    })
+  } catch (error) {
+    req.log?.error(error, 'admin_dashboard_metrics_failed')
+    res.status(500).json({ error: 'Failed to fetch metrics' })
+  }
+})
+
+app.get('/api/admin/ngos', requireAdminApiKey, async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1)
+    const limit = Math.min(Number(req.query.limit || 20), 100)
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined
+
+    const where = status ? { kycStatus: status } : {}
+
+    const [items, total] = await Promise.all([
+      prisma.ngo.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.ngo.count({ where }),
+    ])
+    res.json({ page, limit, total, items })
+  } catch (error) {
+    console.error('admin_ngos_failed:', error.message)
+    res.status(500).json({ error: 'Failed to fetch NGOs' })
+  }
+})
+
+app.get('/api/admin/campaigns', requireAdminApiKey, async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1)
+    const limit = Math.min(Number(req.query.limit || 20), 100)
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined
+    const ngoAddress = typeof req.query.ngoAddress === 'string' ? req.query.ngoAddress : undefined
+
+    let where = {}
+    if (status === 'active') where.vettedApproved = true
+    if (status === 'pending') where.vettedApproved = false
+    if (ngoAddress) where.ngoAddress = ngoAddress.toLowerCase()
+
+    const [items, total] = await Promise.all([
+      prisma.campaign.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.campaign.count({ where }),
+    ])
+    res.json({ page, limit, total, items })
+  } catch (error) {
+    console.error('admin_campaigns_failed:', error.message)
+    res.status(500).json({ error: 'Failed to fetch campaigns' })
+  }
 })
 
 app.get('/api/admin/waitlist', requireAdminApiKey, async (req, res) => {
