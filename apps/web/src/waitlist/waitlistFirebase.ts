@@ -4,6 +4,16 @@ const WAITLIST_OFFLINE_KEY = 'waitlist_offline_queue'
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
+const sanitizeInput = (input: string, maxLength: number): string => {
+  if (!input) return ''
+  // Strip tags and basic XSS vectors
+  const sanitized = input.replace(/<\/?[^>]+(>|$)/g, '')
+    // Replaces dangerous chars with safe equivalents
+    .replace(/[<>"'=;()]/g, '')
+    .trim()
+  return sanitized.substring(0, maxLength)
+}
+
 type WaitlistOfflineEntry = {
   email: string
   role?: string
@@ -51,9 +61,12 @@ const enqueueOfflineWaitlistEntry = (email: string, role?: string) => {
 }
 
 const submitWaitlistToBackend = async (email: string, role: string) => {
+  const sanitizedEmail = sanitizeInput(email, 254)
+  const sanitizedRole = sanitizeInput(role, 50)
+
   const body = {
-    email: normalizeEmail(email),
-    role,
+    email: normalizeEmail(sanitizedEmail),
+    role: sanitizedRole,
     source: 'waitlist-landing',
   }
   await request(apiPath('/api/waitlist'), {
