@@ -5,6 +5,8 @@
 [build.environment]
   NODE_VERSION = "18"
   NPM_FLAGS = "--legacy-peer-deps"
+  VITE_API_URL = "https://donateonchain-api-latest.onrender.com"
+  VITE_RELAYER_API_URL = "https://donateonchain-api-latest.onrender.com"
 
 [[redirects]]
   from = "/*"
