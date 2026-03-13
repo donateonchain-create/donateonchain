@@ -15,7 +15,6 @@ import HowItWorks from './pages/HowItWorks'
 import CreateDesign from './pages/CreateDesign'
 import BecomeanNgo from './pages/BecomeanNgo'
 import BecomeaDesigner from './pages/BecomeaDesigner'
-import { adminRoutes } from './admin'
 import Header from './component/Header'
 import { Waitlist } from './waitlist'
 import ProfileSetupModal from './component/ProfileSetupModal'
@@ -135,8 +134,7 @@ const MainAppRoutes = () => {
                     <Route path="/create-design" element={<PrivateRoute><CreateDesign /></PrivateRoute>} />
                     <Route path="/become-an-ngo" element={<BecomeanNgo />} />
                     <Route path="/become-a-designer" element={<BecomeaDesigner />} />
-                    {adminRoutes}
-                <Route path="/waitlist" element={<Waitlist />} />
+                    <Route path="/waitlist" element={<Waitlist />} />
             </Routes>
         </>
     )

@@ -69,23 +69,44 @@ const ProductPage = () => {
             const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
             const allDesigns = [...userDesigns, ...ngoDesigns]
             const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundDesign) { setCustomDesign(foundDesign); const qty = foundDesign.quantity || foundDesign.maxQuantity || 0; setAvailableQuantity(qty); setIsLoading(false); return }
+            if (foundDesign) {
+                setCustomDesign(foundDesign)
+                const qty = foundDesign.quantity || foundDesign.maxQuantity || 0
+                setAvailableQuantity(qty)
+                setIsLoading(false)
+                return
+            }
             try {
                 const allFirebaseDesigns = await getAllGlobalDesigns()
-                const foundFirebaseDesign = allFirebaseDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                if (foundFirebaseDesign) { setCustomDesign(foundFirebaseDesign); setIsLoading(false); return }
+            const foundFirebaseDesign = allFirebaseDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
+            if (foundFirebaseDesign) {
+                setCustomDesign(foundFirebaseDesign)
+                setIsLoading(false)
+                return
+            }
                 if (address && isConnected) {
                     const userDesignsFirebase = await getUserDesigns(address)
                     const ngoDesignsFirebase = await getNGODesigns(address)
                     const allOwnDesigns = [...userDesignsFirebase, ...ngoDesignsFirebase]
                     const foundOwnDesign = allOwnDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                    if (foundOwnDesign) { setCustomDesign(foundOwnDesign) }
+                    if (foundOwnDesign) {
+                        setCustomDesign(foundOwnDesign)
+                    }
                 }
             } catch {}
             setIsLoading(false)
         }
         loadDesign()
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id])
+   
+    useEffect(() => {
+        setSelectedSize('')
+        setSelectedQuantity(1)
+        setOpenAccordion(null)
+        setShowSuccessMessage(false)
+        setShowDeleteModal(false)
+        setCurrentImageView('front')
     }, [id])
    
     useEffect(() => {
@@ -107,6 +128,7 @@ const ProductPage = () => {
     }, [customDesign, isConnected, address])
    
     const product = customDesign || products.find(p => p.id === parseInt(id || '1'))
+    const maxAvailable = customDesign ? availableQuantity : (product as any)?.stock ?? Infinity
 
     if (!product) {
         return (
@@ -127,14 +149,21 @@ const ProductPage = () => {
 
     const handleAddToCart = () => {
         if (product) {
+            const limit = customDesign ? (customDesign.quantity || customDesign.maxQuantity || maxAvailable) : maxAvailable
+            const safeQuantity = Math.min(selectedQuantity, limit)
+
             if (customDesign && isConnected && isMyDesign) {
-                const maxQuantity = customDesign.quantity || customDesign.maxQuantity
+                const maxQuantity = limit
                 customDesign.sizes.forEach((size: string) => {
-                    for (let i = 0; i < selectedQuantity; i++) { addToCart(customDesign.id, size, customDesign.color, maxQuantity) }
+                    for (let i = 0; i < safeQuantity; i++) {
+                        addToCart(customDesign.id, size, customDesign.color, maxQuantity)
+                    }
                 })
             } else if (selectedSize) {
-                const maxQuantity = customDesign ? (customDesign.quantity || customDesign.maxQuantity) : undefined
-                for (let i = 0; i < selectedQuantity; i++) { addToCart(product.id, selectedSize, (product as any).color, maxQuantity) }
+                const maxQuantity = limit
+                for (let i = 0; i < safeQuantity; i++) {
+                    addToCart(product.id, selectedSize, (product as any).color, maxQuantity)
+                }
             }
             setShowSuccessMessage(true)
             setTimeout(() => { setShowSuccessMessage(false) }, 3000)
@@ -260,19 +289,55 @@ const ProductPage = () => {
                                 </div>
                             </div>
                             <div className="mb-8">
-                                        <label className="block text-sm font-medium text-black mb-3">Quantity {customDesign && `(${availableQuantity} available)`}</label>
-                                        {customDesign && selectedQuantity > availableQuantity && (<p className="text-red-500 text-sm mb-2">Cannot select more than {availableQuantity} items</p>)}
+                                <label className="block text-sm font-medium text-black mb-3">
+                                    Quantity {(maxAvailable !== Infinity) && `(${maxAvailable} available)`}
+                                </label>
+                                {maxAvailable !== Infinity && selectedQuantity > maxAvailable && (
+                                    <p className="text-red-500 text-sm mb-2">
+                                        Cannot select more than {maxAvailable} items
+                                    </p>
+                                )}
                                 <div className="flex items-center gap-3">
-                                            <button onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))} className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-black hover:bg-gray-300 transition-colors"><span className="text-base">-</span></button>
-                                            <input type="number" value={Math.min(selectedQuantity, customDesign ? availableQuantity : Infinity)} onChange={(e) => { const newQty = Math.max(1, parseInt(e.target.value) || 1); const maxAllowed = customDesign ? availableQuantity : Infinity; setSelectedQuantity(Math.min(newQty, maxAllowed)) }} className="w-16 h-10 border border-gray-300 rounded text-center text-sm" min="1" max={customDesign ? availableQuantity : undefined} />
-                                            {customDesign && selectedQuantity > availableQuantity && (<span className="text-red-500 text-xs">Max: {availableQuantity}</span>)}
-                                            <button onClick={() => { const maxAllowed = customDesign ? availableQuantity : Infinity; setSelectedQuantity(Math.min(selectedQuantity + 1, maxAllowed)) }} className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={customDesign && selectedQuantity >= availableQuantity}><span className="text-base">+</span></button>
-                                    </div>
+                                    <button
+                                        onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                                        className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-black hover:bg-gray-300 transition-colors"
+                                    >
+                                        <span className="text-base">-</span>
+                                    </button>
+                                    <input
+                                        type="number"
+                                        value={Math.min(selectedQuantity, maxAvailable)}
+                                        onChange={(e) => {
+                                            const raw = parseInt(e.target.value) || 1
+                                            const clamped = Math.max(1, Math.min(raw, maxAvailable))
+                                            setSelectedQuantity(clamped)
+                                        }}
+                                        className="w-16 h-10 border border-gray-300 rounded text-center text-sm"
+                                        min="1"
+                                        max={maxAvailable !== Infinity ? maxAvailable : undefined}
+                                    />
+                                    {maxAvailable !== Infinity && selectedQuantity > maxAvailable && (
+                                        <span className="text-red-500 text-xs">Max: {maxAvailable}</span>
+                                    )}
+                                    <button
+                                        onClick={() => setSelectedQuantity(Math.min(selectedQuantity + 1, maxAvailable))}
+                                        className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={maxAvailable !== Infinity && selectedQuantity >= maxAvailable}
+                                    >
+                                        <span className="text-base">+</span>
+                                    </button>
                                 </div>
-                                    {customDesign && availableQuantity <= 0 ? (
+                            </div>
+                                    {maxAvailable !== Infinity && maxAvailable <= 0 ? (
                                         <button className="w-full bg-gray-500 text-white py-4 px-6 rounded-lg font-semibold text-lg mb-8 cursor-not-allowed" disabled>Sold Out</button>
                                     ) : (
-                                        <button onClick={handleAddToCart} className="w-full bg-black text-white py-4 px-6 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-colors mb-8 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled={!selectedSize || (customDesign && selectedQuantity > availableQuantity)}>Add to cart</button>
+                                        <button
+                                            onClick={handleAddToCart}
+                                            className="w-full bg-black text-white py-4 px-6 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-colors mb-8 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                            disabled={!selectedSize || (maxAvailable !== Infinity && selectedQuantity > maxAvailable)}
+                                        >
+                                            Add to cart
+                                        </button>
                                     )}
                                 </>
                             )}

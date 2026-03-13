@@ -6,6 +6,7 @@ type CampaignCardProps = {
     amountRaised: string
     target: string
     percentage: number
+    deadlineText?: string
     alt?: string
     className?: string
     onClick?: () => void
@@ -17,6 +18,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     amountRaised,
     target,
     percentage,
+    deadlineText,
     alt = "Campaign",
     className = "",
     onClick
@@ -43,6 +45,13 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                     {title}
                 </h3>
 
+                {deadlineText && (
+                    <div className="mb-3">
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                            {deadlineText}
+                        </span>
+                    </div>
+                )}
 
                 <div className="relative h-12 rounded-full overflow-hidden bg-white border-2 border-gray-300">
 

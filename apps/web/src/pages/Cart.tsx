@@ -235,7 +235,7 @@ const Cart = () => {
 
                             <div className="mb-3">
                               <label className="text-sm text-black mb-2 block">
-                                Quantity
+                                Quantity{item.maxQuantity ? ` (max ${item.maxQuantity})` : ''}
                               </label>
                               <div className="flex items-center gap-2">
                                  <button
@@ -260,9 +260,13 @@ const Cart = () => {
                                 />
                                  <button
                                    onClick={() =>
-                                     updateQuantity(item.uniqueId, item.quantity + 1)
+                                     updateQuantity(
+                                       item.uniqueId,
+                                       item.quantity + 1
+                                     )
                                    }
                                    className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white hover:bg-gray-800 transition-colors"
+                                   disabled={item.maxQuantity !== undefined && item.quantity >= item.maxQuantity}
                                  >
                                    <span className="text-base">+</span>
                                  </button>
