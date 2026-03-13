@@ -44,12 +44,12 @@ async function renderApp() {
     })
 
     const persister: Persister = {
-      persistClient: client =>
+      persistClient: (client: any) =>
         localforage.setItem('donateonchain-query-cache', client).then(() => undefined),
       restoreClient: () =>
         localforage
           .getItem('donateonchain-query-cache')
-          .then((value) => (value === null ? undefined : (value as any))),
+          .then((value: any) => (value === null ? undefined : value)),
       removeClient: () =>
         localforage.removeItem('donateonchain-query-cache').then(() => undefined),
     }
