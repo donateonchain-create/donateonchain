@@ -8,6 +8,8 @@ import ProductCard from '../component/ProductCard'
 import { products } from '../data/databank'
 import { ChevronDown, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { getIPFSURL } from '../utils/ipfs'
+import { getStorageJson } from '../utils/safeStorage'
 import { getUserDesigns, getNGODesigns, getAllGlobalDesigns, getDesignIndex } from '../utils/storageApi'
 import { getDesignById, getDesignPrice } from '../onchain/adapter'
 import { SkeletonProductDetail, SkeletonCard } from '../component/Skeleton'
@@ -40,7 +42,7 @@ const ProductPage = () => {
                 const index = await getDesignIndex(id.toString())
                 let meta: any = null
                 if (index?.metadataCid) {
-                    const url = `https://ipfs.io/ipfs/${index.metadataCid}`
+                    const url = getIPFSURL(index.metadataCid)
                     try { meta = await fetch(url).then(r => r.json()) } catch {}
                 }
                 const assembled = {
@@ -51,7 +53,7 @@ const ProductPage = () => {
                     campaign: Number(onchain.campaignId),
                     color: '#FFFFFF',
                     sizes: ['XS','S','M','L','XL','XXL'],
-                    frontDesign: index?.previewCid ? { url: `https://ipfs.io/ipfs/${index.previewCid}` } : null,
+                    frontDesign: index?.previewCid ? { url: getIPFSURL(index.previewCid) } : null,
                     backDesign: null,
                     walletAddress: onchain.designer,
                     isNgo: false
@@ -65,8 +67,8 @@ const ProductPage = () => {
             if (!id) { setIsLoading(false); return }
             setIsLoading(true)
             await loadFromOnchain()
-            const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
-            const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
+            const userDesigns = getStorageJson<any[]>('userDesigns', [])
+            const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
             const allDesigns = [...userDesigns, ...ngoDesigns]
             const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
             if (foundDesign) {
@@ -77,17 +79,17 @@ const ProductPage = () => {
                 return
             }
             try {
-                const allFirebaseDesigns = await getAllGlobalDesigns()
-            const foundFirebaseDesign = allFirebaseDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundFirebaseDesign) {
-                setCustomDesign(foundFirebaseDesign)
+                const allDesigns = await getAllGlobalDesigns()
+            const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
+            if (foundDesign) {
+                setCustomDesign(foundDesign)
                 setIsLoading(false)
                 return
             }
                 if (address && isConnected) {
-                    const userDesignsFirebase = await getUserDesigns(address)
-                    const ngoDesignsFirebase = await getNGODesigns(address)
-                    const allOwnDesigns = [...userDesignsFirebase, ...ngoDesignsFirebase]
+                    const userDesigns = await getUserDesigns(address)
+                    const ngoDesigns = await getNGODesigns(address)
+                    const allOwnDesigns = [...userDesigns, ...ngoDesigns]
                     const foundOwnDesign = allOwnDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
                     if (foundOwnDesign) {
                         setCustomDesign(foundOwnDesign)
@@ -174,7 +176,7 @@ const ProductPage = () => {
     const handleConfirmDelete = () => {
         if (customDesign) {
             const storageKey = customDesign.isNgo ? 'ngoDesigns' : 'userDesigns'
-            const existingDesigns = JSON.parse(localStorage.getItem(storageKey) || '[]')
+            const existingDesigns = getStorageJson<any[]>(storageKey, [])
             const updatedDesigns = existingDesigns.filter((design: any) => design.id !== customDesign.id)
             localStorage.setItem(storageKey, JSON.stringify(updatedDesigns))
             const redirectPath = customDesign.isNgo ? '/ngo-profile' : '/user-profile'

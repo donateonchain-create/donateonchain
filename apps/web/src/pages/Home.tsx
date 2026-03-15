@@ -13,8 +13,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react';
 import { products, creators } from '../data/databank';
-import { getAllGlobalDesigns } from '../utils/storageApi';
-import { listAllCampaignsFromChain, getUserRoles } from '../onchain/adapter';
+import { getAllGlobalDesigns } from '../utils/storageApi'
+import { getStorageJson } from '../utils/safeStorage'
+import { listAllCampaignsFromChain, getUserRoles } from '../onchain/adapter'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -54,9 +55,8 @@ const Home = () => {
                 
                 
                 
-        const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-        const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-                
+        const userDesigns = getStorageJson<any[]>('userDesigns', [])
+        const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
                 const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
@@ -86,16 +86,14 @@ const Home = () => {
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error loading designs from Firebase, using localStorage only:', error);
+                    console.error('Error loading designs from API, using localStorage only:', error);
                 }
              
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-                
-                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
-                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
-                
-                const allDesigns = [...validUserDesigns, ...validNgoDesigns];
+                const userDesigns = getStorageJson<any[]>('userDesigns', [])
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
+                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName)
+                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName)
+                const allDesigns = [...validUserDesigns, ...validNgoDesigns]
                 
                 const sortedDesigns = allDesigns
                     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());

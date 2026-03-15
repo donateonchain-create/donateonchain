@@ -6,14 +6,15 @@ import { Plus, X, Camera, Copy, Check, Loader2, XCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage } from '../utils/storageApi';
+import { getStorageJson } from '../utils/safeStorage'
+import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage } from '../utils/storageApi'
 import { getUserProofNFTs } from '../onchain/adapter';
 import { getUserRoles, createCampaignByNGO } from '../onchain/adapter';
 import { listAllCampaignsFromChain } from '../onchain/adapter';
 import CreateCampaignModal from '../component/CreateCampaignModal';
-import { uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
+import { getIPFSURL, uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
 import { keccak256, stringToHex } from 'viem';
-import { storeHashViaRelayer } from '../utils/relayer';
+import { storeHash } from '../api/relayer';
 import { getOrders } from '../api'
 
 const UserProfile = () => {
@@ -91,42 +92,39 @@ const UserProfile = () => {
                             profileImage: storedProfile.profileImage || null
                         });
                     } else {
-                        const savedProfile = localStorage.getItem('userProfile');
-                        if (savedProfile) {
-                            const profile = JSON.parse(savedProfile);
+                        const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
+                        if (profile) {
                             setProfileData({
                                 name: profile.name || 'User',
                                 bio: profile.bio || '',
-                                bannerImage: profile.bannerImage || null,
-                                profileImage: profile.profileImage || null
+                                bannerImage: profile.bannerImage ?? null,
+                                profileImage: profile.profileImage ?? null
                             });
                         }
                     }
                 } catch (error) {
                     if (import.meta.env.DEV) {
                         // eslint-disable-next-line no-console
-                        console.error('Error loading profile from Firebase:', error);
+                        console.error('Error loading profile from API:', error);
                     }
-                    const savedProfile = localStorage.getItem('userProfile');
-                    if (savedProfile) {
-                        const profile = JSON.parse(savedProfile);
+                    const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
+                    if (profile) {
                         setProfileData({
                             name: profile.name || 'User',
                             bio: profile.bio || '',
-                            bannerImage: profile.bannerImage || null,
-                            profileImage: profile.profileImage || null
+                            bannerImage: profile.bannerImage ?? null,
+                            profileImage: profile.profileImage ?? null
                         });
                     }
                 }
             } else {
-        const savedProfile = localStorage.getItem('userProfile');
-        if (savedProfile) {
-            const profile = JSON.parse(savedProfile);
+        const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
+        if (profile) {
             setProfileData({
                 name: profile.name || 'User',
                 bio: profile.bio || '',
-                bannerImage: profile.bannerImage || null,
-                profileImage: profile.profileImage || null
+                bannerImage: profile.bannerImage ?? null,
+                profileImage: profile.profileImage ?? null
             });
         }
             }
@@ -171,7 +169,7 @@ const UserProfile = () => {
                     if (designsToMigrate.length > 0) {
                         if (import.meta.env.DEV) {
                             // eslint-disable-next-line no-console
-                            console.log(`Migrating ${designsToMigrate.length} designs to Firebase Storage...`);
+                            console.log(`Migrating ${designsToMigrate.length} designs to storage...`);
                         }
                         await Promise.all(designsToMigrate.map((design: any) => migrateDesignImagesToStorage(design, address, 'user')));
                         
@@ -185,21 +183,18 @@ const UserProfile = () => {
                         }));
                         setCreatedDesigns(formattedDesigns);
                     } else {
-                        const savedDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                        setCreatedDesigns(savedDesigns);
+                        setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
                     }
                 } catch (error) {
                     if (import.meta.env.DEV) {
                         // eslint-disable-next-line no-console
-                        console.error('Error loading designs from Firebase:', error);
+                        console.error('Error loading designs from API:', error);
                     }
-                    const savedDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                    setCreatedDesigns(savedDesigns);
+                    setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
                 }
             } else {
                 
-        const savedDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-        setCreatedDesigns(savedDesigns);
+        setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
             }
         
 
@@ -248,7 +243,7 @@ const UserProfile = () => {
                 } catch (error) {
                     if (import.meta.env.DEV) {
                         // eslint-disable-next-line no-console
-                        console.error('Error loading stats from Firebase:', error);
+                        console.error('Error loading stats from API:', error);
                     }
                 }
             } else {
@@ -327,7 +322,7 @@ const UserProfile = () => {
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error saving profile to Firebase:', error);
+                    console.error('Error saving profile to API:', error);
                 }
             }
         } else {
@@ -388,7 +383,7 @@ const UserProfile = () => {
             if (!imageCid) {
               throw new Error('Image upload failed; campaign will not be created')
             }
-            const imageUrl = `https://ipfs.io/ipfs/${imageCid}`; // Always use HTTP for src
+            const imageUrl = getIPFSURL(imageCid);
             // During campaign creation: create the onchain metadata object with 'goal' clearly set
             const goal = parseFloat((campaignData.target || '0').toString().replace(/[^0-9.]/g, '')) || 0
             const baseMeta = { title: campaignData.campaignTitle, category: campaignData.category, description: campaignData.description, image: imageUrl, goal };
@@ -396,8 +391,8 @@ const UserProfile = () => {
             const meta = { ...baseMeta, contentHash };
             const metadataCid = await uploadMetadataToIPFS(meta);
             if (!metadataCid) throw new Error('Failed to upload metadata to IPFS');
-            await storeHashViaRelayer(imageCid, address!);
-            await storeHashViaRelayer(metadataCid, address!);
+            await storeHash(imageCid, address!);
+            await storeHash(metadataCid, address!);
             const { receipt } = await createCampaignByNGO({ designer: address as `0x${string}`, title: campaignData.campaignTitle, description: campaignData.description, imageCid: imageCid, metadataCid, targetHBAR: goal });
             
             const receiptStatus = receipt?.status as string | number | undefined
@@ -671,7 +666,7 @@ const UserProfile = () => {
                                             <div className="p-3">
                                                 <div className="text-sm font-medium text-black">NFT #{nft.tokenId.toString()}</div>
                                                 {nft.tokenURI && (
-                                                    <a className="text-xs text-blue-600 underline" href={(nft.tokenURI.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${nft.tokenURI.replace('ipfs://','')}` : nft.tokenURI)} target="_blank" rel="noreferrer">View Metadata</a>
+                                                    <a className="text-xs text-blue-600 underline" href={(nft.tokenURI.startsWith('ipfs://') ? getIPFSURL(nft.tokenURI.replace('ipfs://','')) : nft.tokenURI)} target="_blank" rel="noreferrer">View Metadata</a>
                                                 )}
                                             </div>
                                         </div>

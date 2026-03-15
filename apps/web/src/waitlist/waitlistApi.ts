@@ -34,7 +34,7 @@ const writeOfflineQueue = (queue: WaitlistOfflineEntry[]) => {
   try {
     localStorage.setItem(WAITLIST_OFFLINE_KEY, JSON.stringify(queue))
   } catch {
-    // ignore storage failures
+    // ignore
   }
 }
 

@@ -10,7 +10,7 @@ import EditCampaignModal from '../component/EditCampaignModal'
 import { Loader2, Check, Gift, Trash } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
 import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
-import { uploadFileToIPFS } from '../utils/ipfs'
+import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
 import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation } from '../api'
 import type { DonationEventApi } from '../types/api'
 
@@ -74,7 +74,7 @@ const CampaignDetails = () => {
                 try {
                     const metaCid = await getCampaignMetadataCid(numericId)
                         if (metaCid) {
-                        const meta = await fetch(`https://ipfs.io/ipfs/${metaCid}`).then(r => r.json()).catch(() => null)
+                        const meta = await fetch(getIPFSURL(metaCid)).then(r => r.json()).catch(() => null)
                             if (meta) {
                             metaImage = meta.image
                             metaGoal = meta.goal

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useAccount } from 'wagmi'
+import { getStorageJson } from '../utils/safeStorage'
 import { saveCart, getCart } from '../utils/storageApi'
 
 interface CartItem {
@@ -73,15 +74,13 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                 } catch (error) {
                     if (import.meta.env.DEV) {
                         // eslint-disable-next-line no-console
-                        console.error('Error loading cart from Firebase:', error)
+                        console.error('Error loading cart from API:', error)
                     }
                 }
                 
              
-                const savedCart = localStorage.getItem(`cart_${address}`)
-                if (savedCart) {
-                    try {
-                        const parsedCart = JSON.parse(savedCart)
+                const parsedCart = getStorageJson<any[]>(`cart_${address}`, [])
+                if (parsedCart.length > 0) {
                         const migratedCart = parsedCart.map((item: any) => {
                             if (!item.uniqueId) {
                                 return {
@@ -92,31 +91,15 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                             return item
                         })
                         setCartItems(migratedCart)
-                        setCurrentWallet(address)
-                    } catch (error) {
-                        if (import.meta.env.DEV) {
-                            // eslint-disable-next-line no-console
-                            console.error('Error loading cart from localStorage:', error)
-                        }
-                    }
+                    setCurrentWallet(address)
                 } else {
                     setCurrentWallet(address)
                 }
             } else if (!isConnected) {
                
                 if (currentWallet) {
-                    const savedCart = localStorage.getItem(`cart_${currentWallet}`)
-                    if (savedCart) {
-                        try {
-                            const parsedCart = JSON.parse(savedCart)
-                            setCartItems(parsedCart)
-                        } catch (error) {
-                            if (import.meta.env.DEV) {
-                                // eslint-disable-next-line no-console
-                                console.error('Error loading cart from localStorage:', error)
-                            }
-                        }
-                    }
+                    const parsedCart = getStorageJson<any[]>(`cart_${currentWallet}`, [])
+                    if (parsedCart.length > 0) setCartItems(parsedCart)
                 }
             }
         }
@@ -138,7 +121,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                 } catch (error) {
                     if (import.meta.env.DEV) {
                         // eslint-disable-next-line no-console
-                        console.error('Error saving cart to Firebase:', error)
+                        console.error('Error saving cart to API:', error)
                     }
                 }
             }

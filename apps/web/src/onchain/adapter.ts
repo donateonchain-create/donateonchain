@@ -1,6 +1,7 @@
 import { abis, addresses, roles } from './contracts'
 import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
+import { getIPFSURL } from '../utils/ipfs'
 import { keccak256, stringToHex, decodeEventLog } from 'viem'
 
 const CONTRACT = addresses.DONATE_ON_CHAIN as HexAddress
@@ -68,7 +69,7 @@ export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number;
   for (const id of ids) {
     try {
       const c = await getCampaign(id)
-      const image = c.image ? (c.image.startsWith('ipfs://') ? `https://cloudflare-ipfs.com/ipfs/${c.image.replace('ipfs://', '')}` : c.image) : undefined
+      const image = c.image ? (c.image.startsWith('ipfs://') ? getIPFSURL(c.image.replace('ipfs://', '')) : c.image) : undefined
       results.push({ id: Number(id), title: c.title, description: c.description, image, onchainId: id })
     } catch {
       results.push({ id: Number(id), title: '', description: '', onchainId: id })
@@ -98,7 +99,7 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
         let target = Number(chainCampaign.goalHBAR)
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
-          image = `https://cloudflare-ipfs.com/ipfs/${chainCampaign.image}`
+          image = getIPFSURL(chainCampaign.image)
         }
 
         campaigns.push({
@@ -223,7 +224,7 @@ export async function getCampaign(id: bigint): Promise<Campaign & { active?: boo
   const active = state === CampaignState.Active
   let image = c?.imageHash ?? c?.[4]
   if (image && (String(image).startsWith('Qm') || String(image).startsWith('baf'))) {
-    image = `https://cloudflare-ipfs.com/ipfs/${image}`
+    image = getIPFSURL(String(image))
   }
   return {
     id: BigInt(id),

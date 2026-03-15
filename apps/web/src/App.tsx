@@ -19,6 +19,8 @@ import Header from './component/Header'
 import { Waitlist } from './waitlist'
 import ProfileSetupModal from './component/ProfileSetupModal'
 import PrivateRoute from './component/PrivateRoute'
+import { ErrorBoundary } from './component/ErrorBoundary'
+import { getStorageJson } from './utils/safeStorage'
 import { getUserProfile, getNgoProfile } from './utils/storageApi'
 
 const WAITLIST_MODE = import.meta.env.VITE_WAITLIST_MODE === "true"
@@ -65,18 +67,14 @@ const MainAppRoutes = () => {
                         return
                     }
                     
-                    const savedProfile = localStorage.getItem('userProfile')
-                    if (savedProfile) {
-                        const profile = JSON.parse(savedProfile)
-                        if (profile.name && profile.bio) {
-                            setShowProfileSetup(false)
-                            localStorage.setItem('profileSetupCompleted', 'true')
-                            return
-                        }
-                        setExistingProfile(profile)
+                    const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
+                    if (profile && profile.name && profile.bio) {
+                        setShowProfileSetup(false)
+                        localStorage.setItem('profileSetupCompleted', 'true')
+                        return
                     }
-                    
-                    const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                    if (profile) setExistingProfile(profile)
+                    const ngos = getStorageJson<any[]>('ngos', [])
                     if (ngos.length > 0 && ngos[ngos.length - 1].ngoName && ngos[ngos.length - 1].missionStatement) {
                         setShowProfileSetup(false)
                         localStorage.setItem('profileSetupCompleted', 'true')
@@ -89,17 +87,13 @@ const MainAppRoutes = () => {
                         // eslint-disable-next-line no-console
                         console.error('Error checking profile:', error)
                     }
-                    const savedProfile = localStorage.getItem('userProfile')
-                    if (savedProfile) {
-                        const profile = JSON.parse(savedProfile)
-                        if (profile.name && profile.bio) {
-                            setShowProfileSetup(false)
-                            localStorage.setItem('profileSetupCompleted', 'true')
-                            return
-                        }
-                        setExistingProfile(profile)
+                    const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
+                    if (profile && profile.name && profile.bio) {
+                        setShowProfileSetup(false)
+                        localStorage.setItem('profileSetupCompleted', 'true')
+                        return
                     }
-                    
+                    if (profile) setExistingProfile(profile)
                     setShowProfileSetup(true)
                 }
             }
@@ -142,18 +136,20 @@ const MainAppRoutes = () => {
 
 const App = () => {
     return (
-        <CartProvider>
-            <Router>
-                {WAITLIST_MODE ? (
-                    <Routes>
-                        <Route path="/waitlist" element={<Waitlist />} />
-                        <Route path="*" element={<Navigate to="/waitlist" replace />} />
-                    </Routes>
-                ) : (
-                    <MainAppRoutes />
-                )}
-            </Router>
-        </CartProvider>
+        <ErrorBoundary>
+            <CartProvider>
+                <Router>
+                    {WAITLIST_MODE ? (
+                        <Routes>
+                            <Route path="/waitlist" element={<Waitlist />} />
+                            <Route path="*" element={<Navigate to="/waitlist" replace />} />
+                        </Routes>
+                    ) : (
+                        <MainAppRoutes />
+                    )}
+                </Router>
+            </CartProvider>
+        </ErrorBoundary>
     )
 }
 

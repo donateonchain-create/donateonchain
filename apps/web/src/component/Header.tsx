@@ -7,9 +7,12 @@ import { useCart } from '../context/CartContext'
 import { addresses, abis } from '../onchain/contracts'
 import { read as readOnchain } from '../onchain/client'
 import { products, campaigns, causes, creators } from '../data/databank'
+import { getAllGlobalDesigns } from '../utils/storageApi'
+import { listAllCampaignsFromChain } from '../onchain/adapter'
 import { useAppKit } from '@reown/appkit/react'
 import { useAccount, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
 import { hederaTestnet, hederaMainnet } from '../config/reownConfig'
+import { getStorageJson } from '../utils/safeStorage'
 import { getUserRoles } from '../onchain/adapter'
 
 const Header = () => {
@@ -31,6 +34,8 @@ const Header = () => {
     const [searchQuery, setSearchQuery] = useState('')
     const [searchResults, setSearchResults] = useState<any[]>([])
     const [isNgo, setIsNgo] = useState(false)
+    const [realCampaigns, setRealCampaigns] = useState<any[]>([])
+    const [realDesigns, setRealDesigns] = useState<any[]>([])
 
     useEffect(() => {
         const checkRoles = async () => {
@@ -50,6 +55,11 @@ const Header = () => {
         };
         checkRoles();
     }, [address, isConnected]);
+
+    useEffect(() => {
+        listAllCampaignsFromChain().then(setRealCampaigns).catch(() => setRealCampaigns([]));
+        getAllGlobalDesigns().then(setRealDesigns).catch(() => setRealDesigns([]));
+    }, []);
 
     const shortenAddress = (address: string) => {
         if (!address) return ''
@@ -75,21 +85,35 @@ const Header = () => {
         }
         
         const searchTerm = query.toLowerCase()
-        
-      
-        const productResults = products.filter(product => 
-            product.title.toLowerCase().includes(searchTerm) ||
-            product.creator.toLowerCase().includes(searchTerm) ||
-            product.category.toLowerCase().includes(searchTerm) ||
-            product.description.toLowerCase().includes(searchTerm)
-        ).map(p => ({ ...p, type: 'product' }))
-        
-      
-        const campaignResults = campaigns.filter(campaign => 
-            campaign.title.toLowerCase().includes(searchTerm) ||
-            campaign.category.toLowerCase().includes(searchTerm) ||
-            campaign.about.toLowerCase().includes(searchTerm)
-        ).map(c => ({ ...c, type: 'campaign' }))
+
+        const productSource = realDesigns.length > 0 ? realDesigns : products
+        const productResults = (realDesigns.length > 0
+            ? productSource.filter((d: any) =>
+                (d.pieceName || '').toLowerCase().includes(searchTerm) ||
+                (d.description || '').toLowerCase().includes(searchTerm) ||
+                (d.type || '').toLowerCase().includes(searchTerm)
+            ).map((d: any) => ({ ...d, title: d.pieceName || d.title, type: 'product' }))
+            : products.filter(product =>
+                product.title.toLowerCase().includes(searchTerm) ||
+                product.creator.toLowerCase().includes(searchTerm) ||
+                product.category.toLowerCase().includes(searchTerm) ||
+                product.description.toLowerCase().includes(searchTerm)
+            ).map(p => ({ ...p, type: 'product' }))
+        )
+
+        const campaignSource = realCampaigns.length > 0 ? realCampaigns : campaigns
+        const campaignResults = (realCampaigns.length > 0
+            ? campaignSource.filter((c: any) =>
+                (c.title || '').toLowerCase().includes(searchTerm) ||
+                (c.category || '').toLowerCase().includes(searchTerm) ||
+                (c.description || c.about || '').toLowerCase().includes(searchTerm)
+            ).map((c: any) => ({ ...c, type: 'campaign' }))
+            : campaigns.filter(campaign =>
+                campaign.title.toLowerCase().includes(searchTerm) ||
+                campaign.category.toLowerCase().includes(searchTerm) ||
+                campaign.about.toLowerCase().includes(searchTerm)
+            ).map(c => ({ ...c, type: 'campaign' }))
+        )
         
       
         const causeResults = causes.filter(cause => 
@@ -104,8 +128,8 @@ const Header = () => {
         ).map(c => ({ ...c, type: 'creator' }))
         
        
-        const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
-        const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
+        const userDesigns = getStorageJson<any[]>('userDesigns', [])
+        const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
         const allDesigns = [...userDesigns, ...ngoDesigns]
         
         const designResults = allDesigns.filter((design: any) => 

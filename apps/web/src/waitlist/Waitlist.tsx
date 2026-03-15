@@ -62,7 +62,7 @@ const Waitlist = () => {
 
     useEffect(() => {
         const syncOfflineQueue = () => {
-            import('./waitlistFirebase')
+            import('./waitlistApi')
                 .then(({ flushOfflineWaitlistQueue }) => flushOfflineWaitlistQueue().catch(() => undefined))
                 .catch(() => undefined)
         }
@@ -239,7 +239,7 @@ const Waitlist = () => {
                 setJoinError('')
                 setStatusMessage('')
 
-                const { saveWaitlistEntry } = await import('./waitlistFirebase')
+                const { saveWaitlistEntry } = await import('./waitlistApi')
                 const result = await saveWaitlistEntry(email, role)
                 if (result?.status === 'saved') {
                     setEmail('')

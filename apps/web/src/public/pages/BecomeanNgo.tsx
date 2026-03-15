@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
+import { getStorageJson } from '../utils/safeStorage'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -41,12 +42,12 @@ const BecomeanNgo = () => {
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error checking Firebase for NGO application:', error)
+                    console.error('Error checking API for NGO application:', error)
                 }
             }
             
             
-            const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+            const ngos = getStorageJson<any[]>('ngos', [])
            
             const userNgo = ngos.find((ngo: any) => 
                 ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
@@ -305,12 +306,12 @@ const BecomeanNgo = () => {
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.log('NGO application saved to Firebase')
+                console.log('NGO application saved to API')
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.error('Error saving NGO application to Firebase:', error)
+                console.error('Error saving NGO application to API:', error)
             }
             setToast({ msg: 'Failed to save NGO application.', type: 'error' })
         }
@@ -532,7 +533,7 @@ const BecomeanNgo = () => {
                                                     await deleteNgoApplication(address)
                                                 } catch {}
                                                 try {
-                                                    const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                                                    const ngos = getStorageJson<any[]>('ngos', [])
                                                     const filtered = ngos.filter((n: any) => (n.connectedWalletAddress || n.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('ngos', JSON.stringify(filtered))
                                                 } catch {}

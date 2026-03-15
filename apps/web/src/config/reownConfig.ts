@@ -1,6 +1,11 @@
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 
+const mainnetRpc = import.meta.env.VITE_HEDERA_MAINNET_RPC || 'https://mainnet.hashio.io/api'
+const mainnetExplorer = import.meta.env.VITE_HEDERA_MAINNET_EXPLORER || 'https://hashscan.io/mainnet'
+const testnetRpc = import.meta.env.VITE_HEDERA_TESTNET_RPC || 'https://testnet.hashio.io/api'
+const testnetExplorer = import.meta.env.VITE_HEDERA_TESTNET_EXPLORER || 'https://hashscan.io/testnet'
+
 export const hederaMainnet = {
   id: 295,
   name: 'Hedera Mainnet',
@@ -11,13 +16,13 @@ export const hederaMainnet = {
   },
   rpcUrls: {
     default: {
-      http: ['https://mainnet.hashio.io/api']
+      http: [mainnetRpc]
     }
   },
   blockExplorers: {
     default: {
       name: 'HashScan',
-      url: 'https://hashscan.io/mainnet'
+      url: mainnetExplorer
     }
   },
   testnet: false
@@ -33,13 +38,13 @@ export const hederaTestnet = {
   },
   rpcUrls: {
     default: {
-      http: ['https://testnet.hashio.io/api']
+      http: [testnetRpc]
     }
   },
   blockExplorers: {
     default: {
       name: 'HashScan',
-      url: 'https://hashscan.io/testnet'
+      url: testnetExplorer
     }
   },
   testnet: true

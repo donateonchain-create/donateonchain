@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
+import { getStorageJson } from '../utils/safeStorage'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -39,11 +40,11 @@ const BecomeaDesigner = () => {
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error checking Firebase for designer application:', error)
+                    console.error('Error checking API for designer application:', error)
                 }
             }
             
-            const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+            const designers = getStorageJson<any[]>('designers', [])
             const userDesigner = designers.find((designer: any) => 
                 designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                 designer.walletAddress?.toLowerCase() === address.toLowerCase()
@@ -274,12 +275,12 @@ const BecomeaDesigner = () => {
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.log('Designer application saved to Firebase')
+                console.log('Designer application saved to API')
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.error('Error saving designer application to Firebase:', error)
+                console.error('Error saving designer application to API:', error)
             }
             setToast({ msg: 'Failed to save designer application.', type: 'error' })
         }
@@ -490,7 +491,7 @@ const BecomeaDesigner = () => {
                                                     await deleteDesignerApplication(address)
                                                 } catch {}
                                                 try {
-                                                    const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                                                    const designers = getStorageJson<any[]>('designers', [])
                                                     const filtered = designers.filter((d: any) => (d.connectedWalletAddress || d.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('designers', JSON.stringify(filtered))
                                                 } catch {}

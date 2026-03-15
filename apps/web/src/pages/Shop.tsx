@@ -9,6 +9,7 @@ import { SkeletonCard } from '../component/Skeleton'
 import ShopImg from '../assets/ShopImg.png'
 import { Filter, ChevronDown } from 'lucide-react'
 import { products } from '../data/databank'
+import { getStorageJson } from '../utils/safeStorage'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { listDesigns } from '../onchain/adapter'
 
@@ -82,8 +83,8 @@ const Shop = () => {
                 
                 
                
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
                 
                 const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
@@ -108,25 +109,24 @@ const Shop = () => {
                     isDesign: true,
                     design: design
                 }));
-                
-               
+
                 const sortedDesigns = designItems.sort((a: any, b: any) => {
                     const aTime = new Date(a.design?.createdAt || 0).getTime()
                     const bTime = new Date(b.design?.createdAt || 0).getTime()
                     return bTime - aTime
                 });
-                const combinedItems = [...sortedDesigns, ...products];
+                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
                 setAllItems(combinedItems);
                 setFilteredProducts(combinedItems);
                 setIsLoading(false);
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error loading designs from Firebase, using localStorage only:', error);
+                    console.error('Error loading designs from API, using localStorage only:', error);
                 }
                
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
                 
                 const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
@@ -149,13 +149,13 @@ const Shop = () => {
                     const bTime = new Date(b.design?.createdAt || 0).getTime()
                     return bTime - aTime
                 });
-                const combinedItems = [...sortedDesigns, ...products];
+                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
                 setAllItems(combinedItems);
                 setFilteredProducts(combinedItems);
                 setIsLoading(false);
             }
         };
-        
+
         loadDesigns();
     }, [])
 

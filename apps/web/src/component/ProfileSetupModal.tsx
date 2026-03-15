@@ -123,12 +123,12 @@ const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupMod
                 await saveUserProfileWithImages(address, profileData)
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.log('Profile saved to Firebase')
+                    console.log('Profile saved to API')
                 }
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error saving profile to Firebase:', error)
+                    console.error('Error saving profile to API:', error)
                 }
             }
         }

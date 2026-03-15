@@ -1,5 +1,7 @@
+import { getDesignIndex as getDesignIndexFromApi } from '../api/designIndex'
 import { getCampaignMetadataCid } from '../onchain/adapter'
-import { unpinCID, uploadFileToIPFS } from './ipfs'
+import { getStorageJson } from './safeStorage'
+import { getIPFSURL, unpinCID, uploadFileToIPFS } from './ipfs'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
 const isDev = import.meta.env.DEV
@@ -117,7 +119,12 @@ export const saveDesignIndex = async (designId: string, index: { metadataCid: st
 }
 
 export const getDesignIndex = async (designId: string) => {
-  return await getFromStore('designIndex', designId)
+  try {
+    const fromApi = await getDesignIndexFromApi(designId)
+    return fromApi ?? null
+  } catch {
+    return await getFromStore('designIndex', designId)
+  }
 }
 
 export const saveOrder = async (order: { buyer: string; items: any[]; totalHBAR: string; txHashes: string[]; createdAt?: string }) => {
@@ -211,7 +218,7 @@ export const deleteDesignEverywhere = async (designId: number) => {
     await deleteFromStore('designIndex', designId.toString())
     await removeFromGlobalDesigns(designId.toString())
 
-    const existingDesigns = JSON.parse(localStorage.getItem('designs') || '[]')
+    const existingDesigns = getStorageJson<any[]>('designs', [])
     const filtered = existingDesigns.filter(
       (d: any) => (d.onchainId?.toString() || d.id?.toString()) !== designId.toString()
     )
@@ -313,7 +320,7 @@ async function uploadBlobToIPFS(blob: Blob, fileName: string): Promise<string | 
     const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' })
     const cid = await uploadFileToIPFS(file)
     if (!cid) return null
-    return `https://gateway.pinata.cloud/ipfs/${cid}`
+    return getIPFSURL(cid)
   } catch (e) {
     if (isDev) {
       // eslint-disable-next-line no-console
@@ -671,7 +678,7 @@ export const uploadFileToStorage = async (walletAddress: string, file: File, fol
     }
     const cid = await uploadFileToIPFS(file)
     if (!cid) return null
-    const url = `https://gateway.pinata.cloud/ipfs/${cid}`
+    const url = getIPFSURL(cid)
     if (isDev) {
       // eslint-disable-next-line no-console
       console.log(`File uploaded successfully: ${url}`)

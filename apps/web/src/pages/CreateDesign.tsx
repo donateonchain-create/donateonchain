@@ -5,7 +5,9 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import Button from '../component/Button'
 import { ChevronDown, Upload, X, CheckCircle, XCircle } from 'lucide-react'
+import { getStorageJson } from '../utils/safeStorage'
 import { saveUserDesign, saveNGODesign, saveToGlobalDesigns, uploadDesignImageToStorage, saveDesignIndex } from '../utils/storageApi'
+import { storeHash } from '../api/relayer'
 import { uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs'
 import { keccak256, stringToHex } from 'viem'
 import { createDesign, listActiveCampaignsWithMeta } from '../onchain/adapter'
@@ -28,6 +30,7 @@ const CreateDesign = () => {
     const [showProcessingModal, setShowProcessingModal] = useState(false)
     const [countdown, setCountdown] = useState(15)
     const [showErrorModal, setShowErrorModal] = useState(false)
+    const [createError, setCreateError] = useState<string | null>(null)
     const [isEditMode, setIsEditMode] = useState(false)
     const [editDesignId, setEditDesignId] = useState<number | null>(null)
     const [existingFrontImage, setExistingFrontImage] = useState<string | null>(null)
@@ -210,24 +213,27 @@ const CreateDesign = () => {
                 const metadataCid = await uploadMetadataToIPFS(metadata)
                 if (!metadataCid) { throw new Error('Failed to upload metadata to IPFS') }
                 if (selectedCampaignId == null) { throw new Error('Select a campaign before creating the design') }
-                const { storeHashViaRelayer } = await import('../utils/relayer')
-                await storeHashViaRelayer(designFileCid, address!)
-                if (previewCid) await storeHashViaRelayer(previewCid, address!)
-                await storeHashViaRelayer(metadataCid, address!)
+                await storeHash(designFileCid, address!)
+                if (previewCid) await storeHash(previewCid, address!)
+                await storeHash(metadataCid, address!)
                 const cleanPrice = parseFloat((designData.price || '0').toString().replace(/[^0-9.]/g, '')) || 0
                 await createDesign({ campaignId: BigInt(selectedCampaignId), designName: designData.pieceName, description: designData.description, designFileCid, previewImageCid: previewCid || designFileCid, metadataCid, priceHBAR: cleanPrice })
                 await saveDesignIndex(designId.toString(), { metadataCid, previewCid: previewCid || undefined, designCid: designFileCid || undefined })
-            const existingDesigns = JSON.parse(localStorage.getItem(storageKey) || '[]')
-                const designDataForFirebase = { ...designData, frontDesign: frontImageUrl ? { name: designData.frontDesign?.name || 'front', url: frontImageUrl, dataUrl: designData.frontDesign?.dataUrl } : null, backDesign: backImageUrl ? { name: designData.backDesign?.name || 'back', url: backImageUrl, dataUrl: designData.backDesign?.dataUrl } : null }
-                if (isEditMode && editDesignId) { const designIndex = existingDesigns.findIndex((design: any) => design.id.toString() === editDesignId.toString()); if (designIndex !== -1) { designDataForFirebase.createdAt = existingDesigns[designIndex].createdAt; existingDesigns[designIndex] = designDataForFirebase } } else { existingDesigns.push(designDataForFirebase) }
+            const existingDesigns = getStorageJson<any[]>(storageKey, [])
+                const designDataToSave = { ...designData, frontDesign: frontImageUrl ? { name: designData.frontDesign?.name || 'front', url: frontImageUrl, dataUrl: designData.frontDesign?.dataUrl } : null, backDesign: backImageUrl ? { name: designData.backDesign?.name || 'back', url: backImageUrl, dataUrl: designData.backDesign?.dataUrl } : null }
+                if (isEditMode && editDesignId) { const designIndex = existingDesigns.findIndex((design: any) => design.id.toString() === editDesignId.toString()); if (designIndex !== -1) { designDataToSave.createdAt = existingDesigns[designIndex].createdAt; existingDesigns[designIndex] = designDataToSave } } else { existingDesigns.push(designDataToSave) }
             localStorage.setItem(storageKey, JSON.stringify(existingDesigns))
-                if (isNgo) { await saveNGODesign(address!, designId.toString(), designDataForFirebase) } else { await saveUserDesign(address!, designId.toString(), designDataForFirebase) }
-                await saveToGlobalDesigns(designId.toString(), designDataForFirebase)
+                if (isNgo) { await saveNGODesign(address!, designId.toString(), designDataToSave) } else { await saveUserDesign(address!, designId.toString(), designDataToSave) }
+                await saveToGlobalDesigns(designId.toString(), designDataToSave)
             localStorage.setItem('activeProfileTab', 'Created')
                 setShowProcessingModal(false); setShowSuccessModal(true); setCountdown(15)
             const redirectPath = isNgo ? '/ngo-profile' : '/user-profile'
                 countdownRef.current = setInterval(() => { setCountdown((prev) => { if (prev <= 1) { if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null } navigate(redirectPath); return 0 } return prev - 1 }) }, 1000)
-            } catch (e: any) { setShowProcessingModal(false); setShowErrorModal(true) }
+            } catch (e: any) {
+                setShowProcessingModal(false)
+                setCreateError(e?.message || (typeof e === 'string' ? e : 'Something went wrong. Please try again.'))
+                setShowErrorModal(true)
+            }
         }).catch(() => { setShowProcessingModal(false) })
     }
     
@@ -433,7 +439,7 @@ const CreateDesign = () => {
             <Footer />
             {showProcessingModal && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center"><div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto mb-4"></div><h2 className="text-2xl font-bold text-black mb-2">Creating Your Design...</h2><p className="text-gray-600 mb-6">Please wait while we upload your design and save it to the blockchain.</p></div></div>)}
             {showSuccessModal && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center"><CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" /><h2 className="text-2xl font-bold text-black mb-2">{isEditMode ? 'Design Updated Successfully!' : 'Design Created Successfully!'}</h2><p className="text-gray-600 mb-6">{isEditMode ? 'Your design has been updated and is ready for launch.' : 'Your design has been created and is ready for launch.'}</p><Button variant="primary-bw" size="lg" onClick={handleContinueToProfile} className="w-full rounded-lg py-3 text-lg">Continue to Profile</Button><p className="text-sm text-gray-500 mt-4">Redirecting automatically in {countdown} seconds...</p></div></div>)}
-            {showErrorModal && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center"><div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center"><XCircle className="w-8 h-8 text-red-600" /></div><h2 className="text-2xl font-bold text-black mb-2">We couldn’t create your design</h2><p className="text-gray-600 mb-6">Please check your connection and details, then try again.</p><Button variant="primary-bw" size="lg" className="w-full" onClick={() => setShowErrorModal(false)}>Close</Button></div></div>)}
+            {showErrorModal && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center"><div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center"><XCircle className="w-8 h-8 text-red-600" /></div><h2 className="text-2xl font-bold text-black mb-2">We couldn’t create your design</h2><p className="text-gray-600 mb-6">{createError || 'Please check your connection and details, then try again.'}</p><Button variant="primary-bw" size="lg" className="w-full" onClick={() => { setShowErrorModal(false); setCreateError(null) }}>Close</Button></div></div>)}
         </div>
     )
 }

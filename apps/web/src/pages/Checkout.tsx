@@ -12,6 +12,8 @@ import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getDesignPrice, batchPurchaseDesignsPayable } from '../onchain/adapter'
 import { SkeletonCheckoutOverview } from '../component/Skeleton'
 import { createDonation, createOrder } from '../api'
+import { getStorageJson } from '../utils/safeStorage'
+import { isHashPackInstalled, getHashPackDownloadUrl } from '../utils/walletDetection'
 
 const Checkout = () => {
     const navigate = useNavigate()
@@ -21,6 +23,8 @@ const Checkout = () => {
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [showConnectWalletModal, setShowConnectWalletModal] = useState(false)
+    const [connectIntentPaymentMethod, setConnectIntentPaymentMethod] = useState<string | null>(null)
+    const [checkoutError, setCheckoutError] = useState<string | null>(null)
     const [showOwnDesignError, setShowOwnDesignError] = useState(false)
     const [customDesigns, setCustomDesigns] = useState<any[]>([])
     const [designsLoading, setDesignsLoading] = useState(true)
@@ -33,14 +37,14 @@ const Checkout = () => {
             setDesignsLoading(true)
             try {
                 const storedDesigns = await getAllGlobalDesigns();
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
+                const userDesigns = getStorageJson<any[]>('userDesigns', [])
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
                 const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
                 const uniqueDesigns = Array.from(new Map(allDesigns.map(design => [design.id, design])).values());
                 setCustomDesigns(uniqueDesigns);
             } catch (error) {
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
+                const userDesigns = getStorageJson<any[]>('userDesigns', [])
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
                 setCustomDesigns([...userDesigns, ...ngoDesigns])
             } finally {
                 setDesignsLoading(false)
@@ -50,10 +54,10 @@ const Checkout = () => {
     }, [])
 
     const getProductById = (id: number) => {
-        const regularProduct = products.find(product => product.id === id)
-        if (regularProduct) return regularProduct
         const customDesign = customDesigns.find((design: any) => design.id === id)
-        return customDesign
+        if (customDesign) return customDesign
+        const regularProduct = products.find(product => product.id === id)
+        return regularProduct
     }
 
     const checkIfOwnDesign = () => {
@@ -78,9 +82,10 @@ const Checkout = () => {
 
     const getConnectedPaymentMethod = () => {
         if (!isConnected || !connector) return null
+        if (typeof window !== 'undefined' && window.ethereum?.isHashPack) return 'hashpack'
         const connectorName = connector.name.toLowerCase()
-        if (connectorName.includes('metamask') || connectorName.includes('meta')) return 'metamask'
         if (connectorName.includes('hashpack')) return 'hashpack'
+        if (connectorName.includes('metamask') || connectorName.includes('meta')) return 'metamask'
         return 'metamask'
     }
 
@@ -112,7 +117,11 @@ const Checkout = () => {
     }
 
     const handlePaymentMethodSelect = async (method: string) => {
-        if (!isConnected) { setShowConnectWalletModal(true); return }
+        if (!isConnected) {
+            setConnectIntentPaymentMethod(method)
+            setShowConnectWalletModal(true)
+            return
+        }
         setFormData(prev => ({ ...prev, paymentMethod: method }))
     }
 
@@ -123,7 +132,11 @@ const Checkout = () => {
         }
     }, [isConnected, formData.paymentMethod])
 
-    const handleConnectWallet = async () => { setShowConnectWalletModal(false); open({ view: 'Connect' }) }
+    const handleConnectWallet = async () => {
+        setShowConnectWalletModal(false)
+        setConnectIntentPaymentMethod(null)
+        open({ view: 'Connect' })
+    }
 
     const handleCheckout = async () => {
         if (!isFormValid()) return
@@ -152,6 +165,7 @@ const Checkout = () => {
             }
         })
         
+        setCheckoutError(null)
         try {
             const items = designCartItems.map(it => ({ designId: BigInt(it.id), quantity: it.quantity }))
             for (const it of items) { await getDesignPrice(it.designId) }
@@ -172,14 +186,17 @@ const Checkout = () => {
                 const orderItems = designCartItems.map((it) => ({ id: it.id, quantity: it.quantity }))
                 await createOrder({ buyer: address, items: orderItems, totalHBAR: String(total), txHashes })
             }
-        } catch (error) {
+            clearCart()
+            setShowSuccessModal(true)
+        } catch (error: any) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
                 console.error('Checkout error:', error)
             }
+            setCheckoutError(error?.message || 'Checkout failed. Please try again.')
+        } finally {
+            setIsProcessing(false)
         }
-
-        clearCart(); setIsProcessing(false); setShowSuccessModal(true)
     }
 
     const handleCloseModal = () => { setShowSuccessModal(false); navigate('/') }
@@ -285,6 +302,7 @@ const Checkout = () => {
                             <div className="mt-8">
                                 {!isConnected && (<div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"><p className="text-sm text-yellow-800">Please connect your wallet to complete the order.</p></div>)}
                                 {isConnected && checkIfOwnDesign() && (<div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg"><p className="text-sm text-red-800">You cannot purchase your own created design. Please remove it from your cart.</p></div>)}
+                                {checkoutError && (<div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg"><p className="text-sm text-red-800">{checkoutError}</p></div>)}
                                 <Button variant="primary-bw" size="lg" className="w-full" onClick={handleCheckout} disabled={!isFormValid() || isProcessing || !isConnected || checkIfOwnDesign()}>{isProcessing ? 'Processing...' : 'Complete Order'}</Button>
                             </div>
                         </div>
@@ -315,14 +333,20 @@ const Checkout = () => {
                 </div>
             )}
             {showConnectWalletModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm" onClick={() => setShowConnectWalletModal(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm" onClick={() => { setShowConnectWalletModal(false); setConnectIntentPaymentMethod(null) }}>
                     <div className="bg-white rounded-lg p-8 max-w-md mx-4 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
                         <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center"><svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg></div>
                         <h2 className="text-2xl font-bold text-black mb-2">Connect Your Wallet</h2>
                         <p className="text-gray-600 mb-6">Please connect your wallet to continue with the checkout process.</p>
+                        {connectIntentPaymentMethod === 'hashpack' && !isHashPackInstalled() && (
+                            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-left">
+                                <p className="text-sm text-amber-800 mb-2">HashPack extension not detected.</p>
+                                <a href={getHashPackDownloadUrl()} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-amber-700 underline">Install HashPack</a>
+                            </div>
+                        )}
                         <div className="space-y-3">
                             <Button variant="primary-bw" size="lg" className="w-full" onClick={handleConnectWallet}>Connect Wallet</Button>
-                            <Button variant="secondary" size="lg" className="w-full" onClick={() => setShowConnectWalletModal(false)}>Cancel</Button>
+                            <Button variant="secondary" size="lg" className="w-full" onClick={() => { setShowConnectWalletModal(false); setConnectIntentPaymentMethod(null) }}>Cancel</Button>
                         </div>
                     </div>
                 </div>

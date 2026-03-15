@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
+import { getStorageJson } from '../utils/safeStorage'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { SkeletonFormApplication } from '../component/Skeleton'
-import { ChevronDown, Upload, CheckCircle, Clock } from 'lucide-react'
+import { ChevronDown, Upload, CheckCircle, Clock, X } from 'lucide-react'
 import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/storageApi'
 import { ngoRegisterPending } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
@@ -40,7 +41,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                     setExistingNgoData(existingApplication)
                     return
                 }
-                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const ngos = getStorageJson<any[]>('ngos', [])
                 const userNgo = ngos.find((ngo: any) =>
                     ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     ngo.walletAddress?.toLowerCase() === address.toLowerCase()
@@ -53,7 +54,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                     setExistingNgoData(null)
                 }
             } catch (_error) {
-                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const ngos = getStorageJson<any[]>('ngos', [])
                 const userNgo = ngos.find((ngo: any) =>
                     ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     ngo.walletAddress?.toLowerCase() === address.toLowerCase()
@@ -111,6 +112,8 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [accuracyConfirmed, setAccuracyConfirmed] = useState(false)
     const [policyAccepted, setPolicyAccepted] = useState(false)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [submitError, setSubmitError] = useState<string | null>(null)
 
     const organizationTypeOptions = [
         'Charity',
@@ -168,12 +171,24 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
         open({ view: 'Connect' })
     }
 
+    const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+    const isValidPhone = (v: string) => {
+        const digits = v.replace(/\D/g, '')
+        return digits.length >= 10 && digits.length <= 15
+    }
+    const currentYear = new Date().getFullYear()
+    const isValidYearFounded = (v: string) => {
+        const y = parseInt(v.trim(), 10)
+        if (Number.isNaN(y)) return false
+        return y >= 1900 && y <= currentYear
+    }
+
     const isSection1Valid = () => {
-        return ngoName.trim() !== '' && 
-               email.trim() !== '' &&
-               phoneNumber.trim() !== '' &&
+        return ngoName.trim() !== '' &&
+               isValidEmail(email) &&
+               isValidPhone(phoneNumber) &&
                registrationNumber.trim() !== '' &&
-               yearFounded.trim() !== '' &&
+               isValidYearFounded(yearFounded) &&
                organizationType !== '' &&
                focusAreas.length > 0 &&
                addressInput.trim() !== '' &&
@@ -195,7 +210,9 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
 
     const handleSubmit = async () => {
         if (!address) return
-        
+
+        let savedOk = false
+        setIsSubmitting(true)
         try {
             if (chainId && chainId !== hederaTestnet.id) {
                 setToast({ msg: 'Switch to Hedera Testnet and retry.', type: 'error' })
@@ -276,6 +293,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
             }
 
             await saveNgoApplication(ngoData)
+            savedOk = true
             try {
                 await createKycVerification({ walletAddress: address, metadata })
             } catch {}
@@ -319,17 +337,18 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.log('NGO application saved to Firebase')
+                console.log('NGO application saved to API')
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.error('Error saving NGO application to Firebase:', error)
+                console.error('Error saving NGO application to API:', error)
             }
-            setToast({ msg: 'Failed to save NGO application.', type: 'error' })
+            setSubmitError('Failed to save NGO application. Please try again.')
+        } finally {
+            setIsSubmitting(false)
+            if (savedOk) setShowSuccessModal(true)
         }
-
-        setShowSuccessModal(true)
     }
 
     const nextSection = () => {
@@ -550,7 +569,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                                                     await deleteNgoApplication(address)
                                                 } catch {}
                                                 try {
-                                                    const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                                                    const ngos = getStorageJson<any[]>('ngos', [])
                                                     const filtered = ngos.filter((n: any) => (n.connectedWalletAddress || n.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('ngos', JSON.stringify(filtered))
                                                 } catch {}
@@ -578,25 +597,33 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                         <h1 className="text-4xl font-bold text-black mb-2">
                             Become a Verified NGO on DonateOnchain
                         </h1>
-                        <p className="text-gray-600">
+                        <p className="text-gray-600 mb-2">
                             To help us verify your organization and enable crypto donations, please complete the form below carefully.
                         </p>
                     </div>
 
                 
                     <div className="flex justify-center mb-8 gap-2">
-                        {[1, 2, 3, 4].map((section) => (
-                            <div key={section} className="flex items-center">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                                    currentSection === section ? 'bg-black text-white' : 
-                                    currentSection > section ? 'bg-green-500 text-white' :
-                                    'bg-gray-300 text-gray-600'
-                                }`}>
-                                    {currentSection > section ? '✓' : section}
+                        {[
+                            { step: 1, label: 'Details' },
+                            { step: 2, label: 'Documents' },
+                            { step: 3, label: 'Wallet' },
+                            { step: 4, label: 'Review' }
+                        ].map(({ step, label }) => (
+                            <div key={step} className="flex items-center">
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                                        currentSection === step ? 'bg-black text-white' :
+                                        currentSection > step ? 'bg-green-500 text-white' :
+                                        'bg-gray-300 text-gray-600'
+                                    }`}>
+                                        {currentSection > step ? '✓' : step}
+                                    </div>
+                                    <span className="text-xs text-gray-500 mt-1">{label}</span>
                                 </div>
-                                {section < 4 && (
+                                {step < 4 && (
                                     <div className={`w-12 h-1 mx-1 ${
-                                        currentSection > section ? 'bg-green-500' : 'bg-gray-300'
+                                        currentSection > step ? 'bg-green-500' : 'bg-gray-300'
                                     }`} />
                                 )}
                             </div>
@@ -606,10 +633,8 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                   
                     {currentSection === 1 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">📝 Section 1: Organization Details</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 1: Organization details</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. Organization Name <span className="text-red-500">*</span>
                                 </label>
@@ -630,9 +655,12 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent ${email.trim() && !isValidEmail(email) ? 'border-red-500' : 'border-gray-300'}`}
                                     placeholder="contact@yourngo.org"
                                 />
+                                {email.trim() && !isValidEmail(email) && (
+                                    <p className="text-red-500 text-xs mt-1">Enter a valid email address.</p>
+                                )}
                             </div>
 
                             <div className="mb-6">
@@ -643,9 +671,12 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                                     type="tel"
                                     value={phoneNumber}
                                     onChange={(e) => setPhoneNumber(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                                    placeholder="+1234567890"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent ${phoneNumber.trim() && !isValidPhone(phoneNumber) ? 'border-red-500' : 'border-gray-300'}`}
+                                    placeholder="+1234567890 or 1234567890"
                                 />
+                                {phoneNumber.trim() && !isValidPhone(phoneNumber) && (
+                                    <p className="text-red-500 text-xs mt-1">Enter a valid phone number (10–15 digits).</p>
+                                )}
                             </div>
 
                             <div className="mb-6">
@@ -669,11 +700,14 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                                     type="number"
                                     value={yearFounded}
                                     onChange={(e) => setYearFounded(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                                    placeholder="2020"
-                                    min="1900"
-                                    max={new Date().getFullYear()}
+                                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent ${yearFounded.trim() && !isValidYearFounded(yearFounded) ? 'border-red-500' : 'border-gray-300'}`}
+                                    placeholder={`e.g. 2020 (1900–${currentYear})`}
+                                    min={1900}
+                                    max={currentYear}
                                 />
+                                {yearFounded.trim() && !isValidYearFounded(yearFounded) && (
+                                    <p className="text-red-500 text-xs mt-1">Enter a year between 1900 and {currentYear}.</p>
+                                )}
                             </div>
                           
                             <div className="mb-6">
@@ -780,10 +814,8 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                 
                     {currentSection === 2 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">📁 Section 2: Verification Documents</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 2: Verification documents</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. Upload your Logo <span className="text-red-500">*</span>
                                 </label>
@@ -814,7 +846,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
 
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
-                                    2. Upload Annual Report / Portfolio <span className="text-red-500">*</span>
+                                    2. Upload Annual Report / Portfolio (Optional)
                                 </label>
                                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                                     {annualReport ? (
@@ -875,12 +907,10 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                   
                     {currentSection === 3 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">💳 Section 3: Wallet Setup</h2>
-                            
-                         
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 3: Connect wallet</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
-                                    11. Connect Your Wallet <span className="text-red-500">*</span>
+                                    1. Connect Your Wallet <span className="text-red-500">*</span>
                                 </label>
                                 {address ? (
                                     <div className="px-4 py-3 border border-green-300 rounded-lg bg-green-50">
@@ -902,12 +932,10 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                    
                     {currentSection === 4 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">✅ Section 4: Review & Confirmation</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 4: Review & submit</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
-                                    13. Review Your Information
+                                    Review Your Information
                                 </label>
                                 <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
                                     <p><strong>Organization Name:</strong> {ngoName}</p>
@@ -926,7 +954,7 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                         
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
-                                    14. Terms & Conditions
+                                    Terms & Conditions
                                 </label>
                                 <div className="space-y-3">
                                     <label className="flex items-center space-x-2 cursor-pointer">
@@ -997,6 +1025,36 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
             )}
 
           
+            {isSubmitting && (
+                <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-6 md:p-8 max-w-sm w-full text-center shadow-lg">
+                        <div className="mx-auto mb-4 w-12 h-12 border-4 border-gray-200 border-t-black rounded-full animate-spin" />
+                        <h2 className="text-lg font-semibold text-black mb-2">Submitting application…</h2>
+                        <p className="text-sm text-gray-600">
+                            Please wait while we upload your documents, save your application, and start verification.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {submitError && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center">
+                        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <X className="w-8 h-8 text-red-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-black mb-2">Application failed</h2>
+                        <p className="text-gray-600 mb-6">{submitError}</p>
+                        <button
+                            onClick={() => setSubmitError(null)}
+                            className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {showSuccessModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center">

@@ -6,7 +6,8 @@ import Banner from "../component/Banner";
 import Button from "../component/Button";
 import { products } from "../data/databank";
 import { useCart } from "../context/CartContext";
-import { getAllGlobalDesigns } from '../utils/storageApi';
+import { getStorageJson } from '../utils/safeStorage'
+import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getDesignPrice } from '../onchain/adapter';
 import { SkeletonCartRow } from '../component/Skeleton';
 
@@ -23,16 +24,16 @@ const Cart = () => {
       setIsLoading(true);
       try {
         const storedDesigns = await getAllGlobalDesigns();
-        const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-        const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
+        const userDesigns = getStorageJson<any[]>('userDesigns', []);
+        const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
         const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
         const uniqueDesigns = Array.from(
           new Map(allDesigns.map(design => [design.id, design])).values()
         );
         setCustomDesigns(uniqueDesigns);
       } catch (error) {
-        const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-        const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
+        const userDesigns = getStorageJson<any[]>('userDesigns', []);
+        const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
         setCustomDesigns([...userDesigns, ...ngoDesigns]);
       } finally {
         setIsLoading(false);
@@ -58,13 +59,10 @@ const Cart = () => {
   }, [cartItems]);
 
   const getProductById = (id: number) => {
-
-    const regularProduct = products.find((product) => product.id === id);
-    if (regularProduct) return regularProduct;
-    
-  
     const customDesign = customDesigns.find((design) => design.id === id);
-    return customDesign;
+    if (customDesign) return customDesign;
+    const regularProduct = products.find((product) => product.id === id);
+    return regularProduct;
   };
 
   const calculateSubtotal = () => {
