@@ -7,10 +7,18 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import multer from 'multer'
 import pinoHttp from 'pino-http'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 
-const prisma = new PrismaClient()
+import { prisma } from './lib/prisma.js'
+import { normalizeAddress, timingSafeEqualString } from './lib/utils.js'
+import { requireAdminApiKey, requireAdminApiKeyIfConfigured } from './middleware/admin.js'
+
+import ngoRoutes from './routes/ngo.js'
+import kvRoutes from './routes/kv.js'
+import designIndexRoutes from './routes/designIndex.js'
+import waitlistRoutes from './routes/waitlist.js'
+import kycAdminRoutes from './routes/kycAdmin.js'
+import authRoutes from './routes/auth.js'
 
 const app = express()
 const corsOrigins = (process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim()).filter(Boolean)
@@ -36,15 +44,6 @@ app.use(
 app.use(pinoHttp())
 
 const upload = multer({ storage: multer.memoryStorage() })
-
-const adminApiKey = process.env.KYC_ADMIN_API_KEY
-
-function requireAdminApiKey(req, res, next) {
-  if (adminApiKey && !timingSafeEqualString(req.get('x-api-key'), adminApiKey)) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-  return next()
-}
 
 const rateLimitWindowMs = Number(process.env.KYC_RATE_LIMIT_WINDOW_MS || 60000)
 const rateLimitMax = Number(process.env.KYC_RATE_LIMIT_MAX || 30)
@@ -74,65 +73,23 @@ function kycRateLimit(req, res, next) {
   return next()
 }
 
-const AdminKycUpdateSchema = z.object({
-  status: z.enum(['pending', 'in_review', 'approved', 'rejected', 'expired']),
-  triggerOnChain: z.boolean().optional(),
-})
-
-app.post('/api/kyc/verifications/:id/admin-update', async (req, res) => {
-  const apiKey = process.env.KYC_ADMIN_API_KEY
-  if (apiKey && req.get('x-api-key') !== apiKey) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
-  const parsed = AdminKycUpdateSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
-
-  const record = await prisma.kycVerification.findUnique({ where: { id: req.params.id } })
-  if (!record) return res.status(404).json({ error: 'Not found' })
-
-  const nextStatus = parsed.data.status
-  const updated = await prisma.kycVerification.update({
-    where: { id: record.id },
-    data: {
-      status: nextStatus,
-      completedAt:
-        nextStatus === 'approved' || nextStatus === 'rejected' || nextStatus === 'expired' ? new Date() : null,
-    },
-  })
-
-  if (parsed.data.triggerOnChain && nextStatus === 'approved') {
-    try {
-      const chainResult = await verifyAccountOnChain(updated.walletAddress)
-      return res.json({ ok: true, verification: updated, chainResult })
-    } catch (chainError) {
-      req.log?.error(chainError, 'kyc_chain_sync_failed')
-      return res.json({ ok: true, verification: updated, chainError: 'kyc_chain_sync_failed' })
-    }
-  }
-
-  res.json({ ok: true, verification: updated })
-})
-
-function normalizeAddress(address) {
-  return String(address).toLowerCase()
-}
-
 function normalizeMirrorContractIdOrAddress(value) {
   const v = String(value).trim()
   if (v.startsWith('0x') || v.startsWith('0X')) return v.toLowerCase()
   return v
 }
 
-function timingSafeEqualString(input, expected) {
-  if (!input || !expected) return false
-  const inputBuf = Buffer.from(String(input))
-  const expectedBuf = Buffer.from(String(expected))
-  if (inputBuf.length !== expectedBuf.length) return false
-  return timingSafeEqual(inputBuf, expectedBuf)
-}
+app.use((req, _res, next) => {
+  req.verifyAccountOnChain = verifyAccountOnChain
+  next()
+})
+
+app.use('/api', ngoRoutes)
+app.use('/api', designIndexRoutes)
+app.use('/api', waitlistRoutes)
+app.use('/api', kycAdminRoutes)
+app.use('/api', kvRoutes)
+app.use('/api', authRoutes)
 
 function getMirrorConfig() {
   const baseUrl = (process.env.MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com').replace(/\/$/, '')
@@ -668,89 +625,6 @@ app.get('/api/campaigns', async (req, res) => {
   res.json({ page, limit, total, items })
 })
 
-const WaitlistCreateSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  email: z.string().email(),
-  role: z.string().min(1).max(80).optional(),
-  source: z.string().min(1).max(120).optional(),
-  metadata: z.any().optional(),
-})
-
-const WaitlistQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-  email: z.string().email().optional(),
-  role: z.string().min(1).optional(),
-})
-
-app.post('/api/waitlist', async (req, res) => {
-  const parsed = WaitlistCreateSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
-
-  const data = parsed.data
-  const created = await prisma.waitlistEntry.upsert({
-    where: { email: data.email.toLowerCase() },
-    update: {
-      name: data.name ?? undefined,
-      role: data.role ?? undefined,
-      source: data.source ?? undefined,
-      metadata: data.metadata ?? undefined,
-    },
-    create: {
-      name: data.name ?? null,
-      email: data.email.toLowerCase(),
-      role: data.role ?? null,
-      source: data.source ?? null,
-      metadata: data.metadata ?? null,
-    },
-  })
-
-  res.status(201).json({ id: created.id, email: created.email })
-})
-
-app.get('/api/admin/waitlist', requireAdminApiKey, async (req, res) => {
-  const parsed = WaitlistQuerySchema.safeParse(req.query)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
-
-  const { page = 1, limit = 50, email, role } = parsed.data
-  const where = {
-    ...(email ? { email: email.toLowerCase() } : {}),
-    ...(role ? { role } : {}),
-  }
-
-  const [items, total] = await Promise.all([
-    prisma.waitlistEntry.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.waitlistEntry.count({ where }),
-  ])
-
-  res.json({ page, limit, total, items })
-})
-
-app.get('/api/admin/waitlist/export', requireAdminApiKey, async (req, res) => {
-  const entries = await prisma.waitlistEntry.findMany({ orderBy: { createdAt: 'desc' } })
-  res.setHeader('Content-Type', 'text/csv')
-  res.setHeader('Content-Disposition', 'attachment; filename="waitlist.csv"')
-
-  const header = 'id,name,email,role,source,createdAt\n'
-  const rows = entries
-    .map((entry) => {
-      const cells = [entry.id, entry.name ?? '', entry.email, entry.role ?? '', entry.source ?? '', entry.createdAt.toISOString()]
-      return cells.map((cell) => String(cell).replace(/"/g, '""')).map((cell) => `"${cell}"`).join(',')
-    })
-    .join('\n')
-
-  res.send(`${header}${rows}`)
-})
-
 app.get('/api/campaigns/:id', async (req, res) => {
   const id = req.params.id
   const campaign = await prisma.campaign.findUnique({ where: { id } })
@@ -1149,14 +1023,15 @@ async function runCampaignStateSync(reqLogger) {
 }
 
 app.post('/api/kyc/webhook/:provider', async (req, res) => {
-  const provider = req.params.provider
-  const secret = process.env.KYC_WEBHOOK_SECRET
+  const provider = String(req.params.provider || '').toLowerCase()
   const diditSecret = process.env.DIDIT_WEBHOOK_SECRET
-  const signature = req.get('x-webhook-signature')
-  const timestamp = req.get('x-webhook-timestamp')
-  const tolerance = Number(process.env.KYC_WEBHOOK_TOLERANCE_SEC || 300)
-  const webhookSecret = (provider === 'didit' ? diditSecret : secret) || ''
-  if (webhookSecret) {
+  const genericSecret = process.env.KYC_WEBHOOK_SECRET
+  const webhookSecret = provider === 'didit' ? diditSecret : genericSecret
+
+  if (webhookSecret && String(webhookSecret).trim() !== '') {
+    const signature = req.get('x-webhook-signature')
+    const timestamp = req.get('x-webhook-timestamp')
+    const tolerance = Number(process.env.KYC_WEBHOOK_TOLERANCE_SECONDS || 300)
     if (!signature || !timestamp) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
@@ -1255,106 +1130,6 @@ app.post('/api/kyc/webhook/:provider', async (req, res) => {
     }
     req.log?.error(e, 'kyc_webhook_failed')
     res.status(500).json({ error: 'kyc_webhook_failed' })
-  }
-})
-
-const DesignIndexUpsertSchema = z.object({
-  metadataCid: z.string().min(1),
-  previewCid: z.string().min(1).optional(),
-  designCid: z.string().min(1).optional(),
-})
-
-app.put('/api/design-index/:designId', requireAdminApiKey, async (req, res) => {
-  const designId = req.params.designId
-  const parsed = DesignIndexUpsertSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
-
-  const data = parsed.data
-
-  const record = await prisma.designIndex.upsert({
-    where: { designId },
-    update: {
-      metadataCid: data.metadataCid,
-      previewCid: data.previewCid ?? null,
-      designCid: data.designCid ?? null,
-    },
-    create: {
-      designId,
-      metadataCid: data.metadataCid,
-      previewCid: data.previewCid ?? null,
-      designCid: data.designCid ?? null,
-    },
-  })
-
-  res.json(record)
-})
-
-app.get('/api/design-index/:designId', async (req, res) => {
-  const designId = req.params.designId
-  const record = await prisma.designIndex.findUnique({ where: { designId } })
-  if (!record) return res.status(404).json({ error: 'Not found' })
-  res.json(record)
-})
-
-const KvUpsertSchema = z.object({
-  data: z.any(),
-})
-
-app.put('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
-  const collection = req.params.collection
-  const key = req.params.key
-
-  const parsed = KvUpsertSchema.safeParse(req.body)
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() })
-  }
-
-  const record = await prisma.kvDocument.upsert({
-    where: { collection_key: { collection, key } },
-    update: { data: parsed.data.data },
-    create: { collection, key, data: parsed.data.data },
-  })
-
-  res.json({ key: record.key, data: record.data })
-})
-
-app.get('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
-  const collection = req.params.collection
-  const key = req.params.key
-
-  const record = await prisma.kvDocument.findUnique({
-    where: { collection_key: { collection, key } },
-  })
-
-  if (!record) return res.status(404).json({ error: 'Not found' })
-  res.json({ key: record.key, data: record.data })
-})
-
-app.get('/api/kv/:collection', requireAdminApiKey, async (req, res) => {
-  const collection = req.params.collection
-  const keyPrefix = typeof req.query.keyPrefix === 'string' ? req.query.keyPrefix : undefined
-
-  const records = await prisma.kvDocument.findMany({
-    where: {
-      collection,
-      ...(keyPrefix ? { key: { startsWith: keyPrefix } } : {}),
-    },
-    orderBy: { updatedAt: 'desc' },
-  })
-
-  res.json(records.map((r) => ({ key: r.key, data: r.data })))
-})
-
-app.delete('/api/kv/:collection/:key', requireAdminApiKey, async (req, res) => {
-  const collection = req.params.collection
-  const key = req.params.key
-  try {
-    await prisma.kvDocument.delete({ where: { collection_key: { collection, key } } })
-    res.json({ ok: true })
-  } catch {
-    res.status(404).json({ error: 'Not found' })
   }
 })
 
