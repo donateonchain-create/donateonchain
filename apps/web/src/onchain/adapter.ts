@@ -230,24 +230,22 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{
 
     for (const id of donationIds ?? []) {
       try {
-        // Fetch full donation struct to get campaignId and amount
-        const donation = await read<{ donor: string; campaignId: bigint; amount: bigint; timestamp: bigint; nftSerialNumber: bigint; refunded: boolean }>(
-          { address: CONTRACT, abi: ABI, functionName: 'getDonation', args: [id] }
-        )
+        const d = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getDonation', args: [id] })
+        const donationCampaignId: bigint = BigInt(d?.campaignId ?? d?.[1] ?? 0n)
+        const donationAmount: bigint = BigInt(d?.amount ?? d?.[2] ?? 0n)
+        const donationTimestamp: bigint = BigInt(d?.timestamp ?? d?.[3] ?? 0n)
         let image: string | undefined
         let campaignTitle: string | undefined
         try {
-          // Fetch campaign to get image hash
-          const campaign = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [donation.campaignId] })
+          const campaign = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [donationCampaignId] })
           const imageHash = campaign?.imageHash as string | undefined
           if (imageHash) {
             image = imageHash.startsWith('http') ? imageHash : getIPFSURL(imageHash)
           }
           campaignTitle = campaign?.title as string | undefined
-          // Fallback: try to get metadata from IPFS
           if (!image && campaign?.metadataFileHash) {
             try {
-              const metaCid = await read<string>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignMetadataCid', args: [donation.campaignId] }).catch(() => undefined)
+              const metaCid = await read<string>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignMetadataCid', args: [donationCampaignId] }).catch(() => undefined)
               if (metaCid) {
                 const meta = await fetch(getIPFSURL(metaCid)).then(r => r.json()).catch(() => null)
                 if (meta?.image) image = meta.image
@@ -258,11 +256,11 @@ export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{
         } catch { /* campaign fetch failed, continue without image */ }
         results.push({
           tokenId: id,
-          campaignId: donation.campaignId,
+          campaignId: donationCampaignId,
           campaignTitle,
           image,
-          amount: donation.amount,
-          timestamp: donation.timestamp,
+          amount: donationAmount,
+          timestamp: donationTimestamp,
         })
       } catch {
         // Fall back to bare entry if donation fetch fails
