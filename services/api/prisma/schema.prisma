@@ -74,6 +74,71 @@ model Ngo {
   updatedAt DateTime @updatedAt
 }
 
+enum NgoApplicationStatus {
+  pending
+  in_review
+  approved
+  rejected
+}
+
+model NgoApplication {
+  id                   String               @id @default(cuid())
+  walletAddress         String               @unique
+  ngoName               String
+  email                 String
+  phoneNumber           String?
+  registrationNumber    String?
+  yearFounded           String?
+  website               String?
+  organizationType      String?
+  focusAreas            String[]
+  addressLine           String?
+  country               String?
+  stateRegion           String?
+  logoCid               String?
+  annualReportCid       String?
+  registrationCertCid   String?
+  metadataCid           String?
+  status                NgoApplicationStatus @default(pending)
+  rejectionReason       String?
+  statusUpdatedAt       DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum UserRole {
+  donor
+  designer
+  ngo
+  admin
+}
+
+model User {
+  id           String     @id @default(cuid())
+  walletAddress String    @unique
+  roles        UserRole[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  lastLoginAt  DateTime?
+
+  @@index([createdAt])
+}
+
+model AuthNonce {
+  id           String   @id @default(cuid())
+  walletAddress String
+  nonce        String   @unique
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([walletAddress])
+  @@index([expiresAt])
+}
+
 model DonationEvent {
   id          String   @id @default(cuid())
   campaignId  String
