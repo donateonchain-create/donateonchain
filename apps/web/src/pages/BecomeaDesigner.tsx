@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
@@ -20,67 +21,41 @@ const BecomeaDesigner = () => {
     const { address, isConnected } = useAccount()
     const chainId = useChainId()
     const { open } = useAppKit()
+    const queryClient = useQueryClient()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
-    const [existingDesignerData, setExistingDesignerData] = useState<any>(null)
-    const [isLoadingApplication, setIsLoadingApplication] = useState(true)
+    const showToast = (msg: string, type: 'success' | 'error') => {
+        setToast({ msg, type })
+        setTimeout(() => setToast(null), 4000)
+    }
 
-    useEffect(() => {
-        const checkExistingApplication = async () => {
-            if (!isConnected || !address) {
-                setHasAlreadyApplied(false)
-                setExistingDesignerData(null)
-                setIsLoadingApplication(false)
-                return
-            }
-            setIsLoadingApplication(true)
+    const { data: designerApplicationData, isLoading: isLoadingApplication } = useQuery({
+        queryKey: ['designerApplication', address, isConnected],
+        queryFn: async () => {
+            if (!isConnected || !address) return { hasApplied: false, data: null }
             try {
                 const existingApplication = await getDesignerApplicationByWallet(address)
-                if (existingApplication) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(existingApplication)
-                    return
-                }
+                if (existingApplication) return { hasApplied: true, data: existingApplication }
                 const designers = getStorageJson<any[]>('designers', [])
                 const userDesigner = designers.find((designer: any) =>
                     designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     designer.walletAddress?.toLowerCase() === address.toLowerCase()
                 )
-                if (userDesigner) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(userDesigner)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingDesignerData(null)
-                }
-            } catch (error) {
+                if (userDesigner) return { hasApplied: true, data: userDesigner }
+                return { hasApplied: false, data: null }
+            } catch (_error) {
                 const designers = getStorageJson<any[]>('designers', [])
                 const userDesigner = designers.find((designer: any) =>
                     designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     designer.walletAddress?.toLowerCase() === address.toLowerCase()
                 )
-                if (userDesigner) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(userDesigner)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingDesignerData(null)
-                }
-            } finally {
-                setIsLoadingApplication(false)
+                if (userDesigner) return { hasApplied: true, data: userDesigner }
+                return { hasApplied: false, data: null }
             }
         }
-        checkExistingApplication()
-    }, [address, isConnected])
+    })
 
-    useEffect(() => {
-        if (toast) {
-            const timer = setTimeout(() => {
-                setToast(null)
-            }, 4000)
-            return () => clearTimeout(timer)
-        }
-    }, [toast])
+    const hasAlreadyApplied = designerApplicationData?.hasApplied ?? false
+    const existingDesignerData = designerApplicationData?.data ?? null
 
     useWatchContractEvent({
         address: addresses.DONATE_ON_CHAIN as any,
@@ -88,7 +63,7 @@ const BecomeaDesigner = () => {
         eventName: 'AccountVerified',
         onLogs: (logs) => {
             if (address && logs.some((l: any) => l.args?.account?.toLowerCase() === address.toLowerCase())) {
-                setToast({ msg: 'Account verified.', type: 'success' })
+                showToast('Account verified.', 'success')
             }
         },
     })
@@ -193,18 +168,18 @@ const BecomeaDesigner = () => {
         setIsSubmitting(true)
         try {
             if (chainId && chainId !== hederaTestnet.id) {
-                setToast({ msg: 'Switch to Hedera Testnet and retry.', type: 'error' })
+                showToast('Switch to Hedera Testnet and retry.', 'error')
                 return
             }
 
             const pc = publicClient()
             if (!pc) {
-                setToast({ msg: 'Unable to connect to network', type: 'error' })
+                showToast('Unable to connect to network', 'error')
                 return
             }
             const bal = await pc.getBalance({ address })
             if (bal === 0n) {
-                setToast({ msg: 'Fund your Hedera Testnet account, then retry.', type: 'error' })
+                showToast('Fund your Hedera Testnet account, then retry.', 'error')
                 return
             }
 
@@ -237,7 +212,7 @@ const BecomeaDesigner = () => {
             const metadataHash = await uploadMetadataToIPFS(metadata)
 
             if (!metadataHash) {
-                setToast({ msg: 'Failed to upload metadata to IPFS.', type: 'error' })
+                showToast('Failed to upload metadata to IPFS.', 'error')
                 return
             }
 
@@ -282,20 +257,20 @@ const BecomeaDesigner = () => {
                         const updatedDesignerData = { ...designerData, transactionHash: receipt.transactionHash }
                         await saveDesignerApplication(updatedDesignerData)
                     }
-                    setToast({ msg: 'Designer application submitted on-chain with IPFS metadata.', type: 'success' })
+                    showToast('Designer application submitted on-chain with IPFS metadata.', 'success')
                 } else {
-                    setToast({ msg: 'Designer application saved to database. Your previous application is being reviewed.', type: 'success' })
+                    showToast('Designer application saved to database. Your previous application is being reviewed.', 'success')
                 }
             } catch (e: any) {
                 const msg = String(e?.message || e)
                 if (msg.includes('DesignerAlreadyRegistered')) {
-                    setToast({ msg: 'This wallet address is already registered as a designer on-chain. Application saved to database.', type: 'success' })
+                    showToast('This wallet address is already registered as a designer on-chain. Application saved to database.', 'success')
                 } else if (msg.includes('Sender account not found')) {
-                    setToast({ msg: 'Sender account not found. Fund Hedera Testnet account and retry.', type: 'error' })
+                    showToast('Sender account not found. Fund Hedera Testnet account and retry.', 'error')
                 } else if (msg.includes('EmptyMetadata')) {
-                    setToast({ msg: 'Metadata is required for registration.', type: 'error' })
+                    showToast('Metadata is required for registration.', 'error')
                 } else {
-                    setToast({ msg: 'On-chain designer registration failed. Application saved to database.', type: 'error' })
+                    showToast('On-chain designer registration failed. Application saved to database.', 'error')
                 }
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
@@ -465,8 +440,7 @@ const BecomeaDesigner = () => {
                                     <div className="flex items-center justify-center gap-3">
                                         <button
                                             onClick={() => {
-                                                setHasAlreadyApplied(false)
-                                                setExistingDesignerData(null)
+queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isConnected] })
                                                 if (address) {
                                                     deleteDesignerApplication(address).catch(() => {})
                                                 }
@@ -529,8 +503,7 @@ const BecomeaDesigner = () => {
                                                     const filtered = designers.filter((d: any) => (d.connectedWalletAddress || d.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('designers', JSON.stringify(filtered))
                                                 } catch {}
-                                                setHasAlreadyApplied(false)
-                                                setExistingDesignerData(null)
+queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isConnected] })
                                             }}
                                             className="bg-red-600 text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-red-700 transition-colors"
                                         >

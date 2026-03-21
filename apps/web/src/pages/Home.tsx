@@ -11,7 +11,7 @@ import Bannerright from "../assets/Bannerright.png";
 import BannerNft from "../assets/BannerNft.png";
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi'
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { products, creators } from '../data/databank';
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getStorageJson } from '../utils/safeStorage'
@@ -39,103 +39,84 @@ const setCache = (key: string, data: any) => {
 const Home = () => {
     const navigate = useNavigate();
     const { address, isConnected } = useAccount()
-    const [popularDesigns, setPopularDesigns] = useState<any[]>([]);
-    const [popularCampaigns, setPopularCampaigns] = useState<any[]>([]);
-    const [showcaseCreators, setShowcaseCreators] = useState<any[]>([]);
-    const [shoeCollections, setShoeCollections] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        const loadData = async () => {
-           
+        const { data: popularDesigns = [], isLoading: isLoadingDesigns } = useQuery({
+        queryKey: ['globalDesigns'],
+        queryFn: async () => {
             try {
                 const storedDesigns = await getAllGlobalDesigns();
                 const validStoredDesigns = storedDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
-                
-                
-                
-        const userDesigns = getStorageJson<any[]>('userDesigns', [])
-        const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
                 const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
                 const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
                 
-              
                 const allDesigns = [...validStoredDesigns, ...validUserDesigns, ...validNgoDesigns];
-                
                 
                 const uniqueDesigns = Array.from(
                     new Map(allDesigns.map(design => [design.id, design])).values()
                 );
                 
-                
-        
-       
                 const sortedDesigns = uniqueDesigns
-            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        
-      
-        const userDesignsOnly = sortedDesigns.slice(0, 5);
-        const mockDesignsNeeded = 5 - userDesignsOnly.length;
-        const recentDesigns = [
-            ...userDesignsOnly,
-            ...products.slice(0, mockDesignsNeeded)
-        ];
-        
-        setPopularDesigns(recentDesigns);
+                    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+                
+                const userDesignsOnly = sortedDesigns.slice(0, 5);
+                const mockDesignsNeeded = 5 - userDesignsOnly.length;
+                return [
+                    ...userDesignsOnly,
+                    ...products.slice(0, mockDesignsNeeded)
+                ];
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
                     console.error('Error loading designs from API, using localStorage only:', error);
                 }
-             
-                const userDesigns = getStorageJson<any[]>('userDesigns', [])
-                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
-                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName)
-                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName)
-                const allDesigns = [...validUserDesigns, ...validNgoDesigns]
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
+                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const allDesigns = [...validUserDesigns, ...validNgoDesigns];
                 
                 const sortedDesigns = allDesigns
                     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 
                 const userDesignsOnly = sortedDesigns.slice(0, 5);
                 const mockDesignsNeeded = 5 - userDesignsOnly.length;
-                const recentDesigns = [
+                return [
                     ...userDesignsOnly,
                     ...products.slice(0, mockDesignsNeeded)
                 ];
-                
-                setPopularDesigns(recentDesigns);
             }
-            
-           
+        }
+    });
+
+    const { data: popularCampaigns = [], isLoading: isLoadingCampaigns } = useQuery({
+        queryKey: ['globalCampaigns'],
+        queryFn: async () => {
+            const cacheKey = 'home_popular_campaigns';
+            const cached = getCache(cacheKey);
+            if (cached) return cached;
+
             try {
-                const cacheKey = 'home_popular_campaigns'
-                const cached = getCache(cacheKey)
-                if (cached) {
-                    setPopularCampaigns(cached)
-                }
                 const onchainCampaigns = await listAllCampaignsFromChain();
                 const sortedCampaigns = onchainCampaigns
                     .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 const topCampaigns = sortedCampaigns.slice(0, 5);
-                setPopularCampaigns(topCampaigns);
-                setCache(cacheKey, topCampaigns)
+                setCache(cacheKey, topCampaigns);
+                return topCampaigns;
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
                     console.error('Error loading campaigns:', error);
                 }
-                setPopularCampaigns([]);
+                return [];
             }
-        
-        setShowcaseCreators(creators.slice(0, 6));
-        setShoeCollections(products.slice(0, 6));
-        setIsLoading(false);
-        };
-        
-        loadData();
-    }, []);
+        }
+    });
+
+    const showcaseCreators = creators.slice(0, 6);
+    const shoeCollections = products.slice(0, 6);
+    const isLoading = isLoadingDesigns || isLoadingCampaigns;
     const handleGetStarted = async () => {
         if (isConnected && address) {
             try {

@@ -1,5 +1,7 @@
 import { Search, ShoppingBag, ChevronDown, Menu, X, ChevronRight, User, Package, LogOut, Copy } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMountEffect } from '../hooks/useMountEffect'
 import { useNavigate } from 'react-router-dom'
 import Button from './Button'
 import DonateLogo from '../assets/DonateLogo.png'
@@ -23,43 +25,69 @@ const Header = () => {
     const chainId = useChainId()
     const { switchChain } = useSwitchChain()
     const [isShopOpen, setIsShopOpen] = useState(false)
-    const [shopEntered, setShopEntered] = useState(false)
     const [activeNav, setActiveNav] = useState<string>('')
     const [isSearchOpen, setIsSearchOpen] = useState(false)
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-    const [showAdmin, setShowAdmin] = useState(false)
     const [isMobileShopOpen, setIsMobileShopOpen] = useState(false)
     const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
     const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [searchResults, setSearchResults] = useState<any[]>([])
-    const [isNgo, setIsNgo] = useState(false)
-    const [realCampaigns, setRealCampaigns] = useState<any[]>([])
-    const [realDesigns, setRealDesigns] = useState<any[]>([])
-
-    useEffect(() => {
-        const checkRoles = async () => {
+    const { data: isNgo = false } = useQuery({
+        queryKey: ['userRole', address, isConnected],
+        queryFn: async () => {
             if (address && isConnected) {
-                try {
-                    const roles = await getUserRoles(address as `0x${string}`);
-                    setIsNgo(roles.isNgo);
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error checking roles in header:', error);
-                    }
-                }
-            } else {
-                setIsNgo(false);
+                const roles = await getUserRoles(address as `0x${string}`);
+                return roles.isNgo;
             }
-        };
-        checkRoles();
-    }, [address, isConnected]);
+            return false;
+        },
+        enabled: !!address && isConnected
+    });
 
-    useEffect(() => {
-        listAllCampaignsFromChain().then(setRealCampaigns).catch(() => setRealCampaigns([]));
-        getAllGlobalDesigns().then(setRealDesigns).catch(() => setRealDesigns([]));
-    }, []);
+    const { data: realCampaigns = [] } = useQuery({
+        queryKey: ['headerCampaigns'],
+        queryFn: () => listAllCampaignsFromChain().catch(() => [])
+    });
+
+    const { data: realDesigns = [] } = useQuery({
+        queryKey: ['headerDesigns'],
+        queryFn: () => getAllGlobalDesigns().catch(() => [])
+    });
+
+    const { data: showAdmin = false } = useQuery({
+        queryKey: ['adminRole', address, chainId],
+        queryFn: async () => {
+            if (!address || chainId !== 296) return false;
+            const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000';
+            const isAdmin = await readOnchain<boolean>({ 
+                address: addresses.DONATE_ON_CHAIN as `0x${string}`, 
+                abi: abis.DonateOnChain as any, 
+                functionName: 'hasRole', 
+                args: [DEFAULT_ADMIN_ROLE, address] 
+            });
+            return Boolean(isAdmin);
+        },
+        enabled: !!address && chainId === 296
+    });
+
+    const toggleSearch = () => {
+        setIsSearchOpen((prev) => {
+            const next = !prev;
+            document.body.style.overflow = next ? 'hidden' : 'unset';
+            return next;
+        });
+        setIsShopOpen(false);
+    };
+
+    const closeSearch = () => {
+        setIsSearchOpen(false);
+        document.body.style.overflow = 'unset';
+    };
+
+
+
+
 
     const shortenAddress = (address: string) => {
         if (!address) return ''
@@ -213,61 +241,21 @@ const Header = () => {
         { id: hederaMainnet.id, name: 'Hedera Mainnet' },
     ]
 
-    useEffect(() => {
-        if (isShopOpen) {
-            const id = requestAnimationFrame(() => setShopEntered(true))
-            return () => cancelAnimationFrame(id)
-        } else {
-            setShopEntered(false)
-        }
-    }, [isShopOpen])
 
-    useEffect(() => {
-        if (isSearchOpen) {
-            document.body.style.overflow = 'hidden'
-        } else {
-            document.body.style.overflow = 'unset'
-        }
-        
-        return () => {
-            document.body.style.overflow = 'unset'
-        }
-    }, [isSearchOpen])
 
-    useEffect(() => {
-       
-        document.body.style.paddingTop = '72px' 
-        
+
+
+    useMountEffect(() => {
+        document.body.style.paddingTop = '72px'
         return () => {
             document.body.style.paddingTop = '0'
+            document.body.style.overflow = 'unset'
         }
-    }, [])
+    })
 
-    useEffect(() => {
-        const loadRole = async () => {
-            try {
-                if (!address) { setShowAdmin(false); return }
-                if (chainId !== 296) { setShowAdmin(false); return }
-                const DEFAULT_ADMIN_ROLE = '0x0000000000000000000000000000000000000000000000000000000000000000'
-                const isAdmin = await readOnchain<boolean>({ address: addresses.DONATE_ON_CHAIN as `0x${string}`, abi: abis.DonateOnChain as any, functionName: 'hasRole', args: [DEFAULT_ADMIN_ROLE, address] })
-                setShowAdmin(Boolean(isAdmin))
-            } catch {
-                setShowAdmin(false)
-            }
-        }
-        loadRole()
-    }, [address, chainId])
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (isWalletMenuOpen && !(event.target as HTMLElement).closest('.wallet-menu')) {
-                setIsWalletMenuOpen(false)
-            }
-        }
 
-        document.addEventListener('mousedown', handleClickOutside)
-        return () => document.removeEventListener('mousedown', handleClickOutside)
-    }, [isWalletMenuOpen])
+
 
     return (
         <header className="fixed top-0 left-0 right-0 z-20 w-full bg-white px-4 md:px-7 py-[18px] flex items-center justify-between max-h-24">
@@ -325,7 +313,7 @@ const Header = () => {
                 <button 
                     aria-label="Search"
                     className={`inline-flex items-center justify-center w-9 h-9 rounded-lg cursor-pointer ${isSearchOpen ? 'bg-gray-300 text-black' : 'bg-transparent text-black hover:bg-gray-100'}`}
-                    onClick={() => { setIsSearchOpen((v) => !v); setIsShopOpen(false) }}
+                    onClick={toggleSearch}
                     aria-expanded={isSearchOpen}
                 >
                     <Search size={18} />
@@ -367,6 +355,7 @@ const Header = () => {
                             </Button>
                             
                             {isWalletMenuOpen && (
+                                <>
                                 <div className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border border-gray-200 w-64 z-50">
                                     <div className="p-4 border-b border-gray-200">
                                         <div className="flex items-center gap-3 mb-2">
@@ -425,6 +414,8 @@ const Header = () => {
                                         </button>
                                     </div>
                                 </div>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsWalletMenuOpen(false)} />
+                                </>
                             )}
                         </div>
                     )}
@@ -441,7 +432,7 @@ const Header = () => {
             </div>
 
      
-            {isSearchOpen && <div className="fixed inset-x-0 top-20 bottom-0 z-10 bg-black bg-opacity-20 backdrop-blur-sm" onClick={() => setIsSearchOpen(false)} />}
+            {isSearchOpen && <div className="fixed inset-x-0 top-20 bottom-0 z-10 bg-black bg-opacity-20 backdrop-blur-sm" onClick={closeSearch} />}
            
             {isSearchOpen && (
                 <div className="absolute left-1/2 top-full mt-3 -translate-x-1/2 z-20 bg-white text-black rounded-lg shadow-xl w-[640px] max-w-[calc(100vw-56px)] overflow-hidden">
@@ -521,7 +512,7 @@ const Header = () => {
                 <>
               
                 <div className="fixed inset-0 z-10" onClick={() => setIsShopOpen(false)} />
-                <div className={`absolute left-16 top-full mt-3 z-20 bg-black text-white rounded-2xl shadow-xl w-[420px] max-w-[calc(100vw-56px)] pl-10 pr-6 py-6 transition-all duration-200 ease-in transform ${shopEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                <div className={`absolute left-16 top-full mt-3 z-20 bg-black text-white rounded-2xl shadow-xl w-[420px] max-w-[calc(100vw-56px)] pl-10 pr-6 py-6 transition-all duration-200 ease-in transform ${'animate-in fade-in slide-in-from-top-2 duration-200'}`}>
                     <div className="grid grid-cols-2 gap-12">
                         <div>
                             <h4 className="text-gray-300 text-lg mb-4">Collections</h4>
@@ -609,6 +600,7 @@ const Header = () => {
                                     Connect Wallet
                                 </Button>
                             ) : (
+                                <>
                                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                                     <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
                                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
@@ -660,6 +652,8 @@ const Header = () => {
                                         </button>
                                     </div>
                                 </div>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsWalletMenuOpen(false)} />
+                                </>
                             )}
                         </div>
                     </div>

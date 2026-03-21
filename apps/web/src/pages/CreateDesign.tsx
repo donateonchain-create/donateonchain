@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
+import { useMountEffect } from '../hooks/useMountEffect'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
@@ -14,29 +16,42 @@ import { createDesign, listActiveCampaignsWithMeta } from '../onchain/adapter'
 
 const CreateDesign = () => {
     const { address } = useAccount()
-    const [selectedType, setSelectedType] = useState('Shirt')
-    const [selectedSizes, setSelectedSizes] = useState<string[]>([])
-    const [quantity, setQuantity] = useState('1')
-    const [selectedColor, setSelectedColor] = useState('white')
-    const [customColor, setCustomColor] = useState('#000000')
-    const [price, setPrice] = useState('')
+    const [selectedType, setSelectedType] = useState(() => location.state?.editDesign?.type || 'Shirt')
+    const [selectedSizes, setSelectedSizes] = useState<string[]>(() => location.state?.editDesign?.sizes || [])
+    const [quantity, setQuantity] = useState(() => location.state?.editDesign?.quantity?.toString() || '1')
+    const [selectedColor, setSelectedColor] = useState(() => {
+        if (!location.state?.editDesign) return 'white';
+        const c = location.state.editDesign.color;
+        return c === '#FFFFFF' ? 'white' : c === '#000000' ? 'black' : 'custom'
+    })
+    const [customColor, setCustomColor] = useState(() => location.state?.editDesign?.color || '#000000')
+    const [price, setPrice] = useState(() => location.state?.editDesign?.price?.toString() || '')
     const [frontDesign, setFrontDesign] = useState<File | null>(null)
     const [backDesign, setBackDesign] = useState<File | null>(null)
     const [currentStep, setCurrentStep] = useState(1)
-    const [pieceName, setPieceName] = useState('')
-    const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null)
-    const [description, setDescription] = useState('')
+    const [pieceName, setPieceName] = useState(() => location.state?.editDesign?.pieceName || '')
+    const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(() => Number(location.state?.editDesign?.campaign) || null)
+    const [description, setDescription] = useState(() => location.state?.editDesign?.description || '')
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [showProcessingModal, setShowProcessingModal] = useState(false)
     const [countdown, setCountdown] = useState(15)
     const [showErrorModal, setShowErrorModal] = useState(false)
     const [createError, setCreateError] = useState<string | null>(null)
-    const [isEditMode, setIsEditMode] = useState(false)
-    const [editDesignId, setEditDesignId] = useState<number | null>(null)
-    const [existingFrontImage, setExistingFrontImage] = useState<string | null>(null)
-    const [existingBackImage, setExistingBackImage] = useState<string | null>(null)
-    const [campaigns, setCampaigns] = useState<any[]>([])
-    const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false)
+    const [isEditMode, setIsEditMode] = useState(() => !!location.state?.editDesign)
+    const [editDesignId, setEditDesignId] = useState<number | null>(() => location.state?.editDesign?.id || null)
+    const [existingFrontImage, setExistingFrontImage] = useState<string | null>(() => location.state?.editDesign?.frontDesign?.url || location.state?.editDesign?.frontDesign?.dataUrl || null)
+    const [existingBackImage, setExistingBackImage] = useState<string | null>(() => location.state?.editDesign?.backDesign?.url || location.state?.editDesign?.backDesign?.dataUrl || null)
+
+    const { data: campaigns = [], isLoading: isLoadingCampaigns } = useQuery({
+        queryKey: ['activeCampaignsWithMeta'],
+        queryFn: async () => {
+            try {
+                return await listActiveCampaignsWithMeta();
+            } catch {
+                return [];
+            }
+        }
+    })
     const [campaignSearch, setCampaignSearch] = useState('')
     const [campaignCategoryFilter, setCampaignCategoryFilter] = useState<string>('all')
     const [isCategoryOpen, setIsCategoryOpen] = useState(false)
@@ -44,41 +59,11 @@ const CreateDesign = () => {
     const location = useLocation()
     const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
-    useEffect(() => {
-        const load = async () => {
-            setIsLoadingCampaigns(true)
-            try {
-                const list = await listActiveCampaignsWithMeta();
-                setCampaigns(list)
-            } catch {}
-            finally { setIsLoadingCampaigns(false) }
-        }
-        load()
-    }, [])
+
    
-    useEffect(() => {
-        if (location.state?.editDesign) {
-            const editDesign = location.state.editDesign
-            setIsEditMode(true)
-            setEditDesignId(editDesign.id)
-            setSelectedType(editDesign.type || 'Shirt')
-            setSelectedSizes(editDesign.sizes || [])
-            setQuantity(editDesign.quantity?.toString() || '1')
-            setSelectedColor(editDesign.color === '#FFFFFF' ? 'white' : editDesign.color === '#000000' ? 'black' : 'custom')
-            setCustomColor(editDesign.color)
-            setPrice(editDesign.price?.toString() || '20,000')
-            setPieceName(editDesign.pieceName || '')
-            setSelectedCampaignId(Number(editDesign.campaign) || null)
-            setDescription(editDesign.description || '')
-            setExistingFrontImage(editDesign.frontDesign?.url || editDesign.frontDesign?.dataUrl || null)
-            setExistingBackImage(editDesign.backDesign?.url || editDesign.backDesign?.dataUrl || null)
-            setCurrentStep(1) 
-        }
-    }, [location.state])
+
    
-    useEffect(() => {
-        return () => { if (countdownRef.current) { clearInterval(countdownRef.current) } }
-    }, [])
+    useMountEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current) })
 
     const colors = [ { name: 'white', value: '#FFFFFF' }, { name: 'black', value: '#000000' } ]
 

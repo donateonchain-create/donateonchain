@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
@@ -12,7 +13,6 @@ import { SkeletonCampaignDetail } from '../component/Skeleton'
 import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
 import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation } from '../api'
-import type { DonationEventApi } from '../types/api'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -38,33 +38,25 @@ const CampaignDetails = () => {
     const navigate = useNavigate()
     const { address, isConnected } = useAccount()
     const [donationAmount, setDonationAmount] = useState<string>('')
-    const [campaign, setCampaign] = useState<any>(null)
-    const [allCampaigns, setAllCampaigns] = useState<any[]>([])
-    const [isLoading, setIsLoading] = useState(true)
-    const [isCampaignCreator, setIsCampaignCreator] = useState(false)
+    const [isDonating, setIsDonating] = useState(false)
+    const [donationError, setDonationError] = useState<string | null>(null)
+    const [donationSuccess, setDonationSuccess] = useState(false)
+    const [txHash, setTxHash] = useState<string | null>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isUploadingCampaign, setIsUploadingCampaign] = useState(false)
     const [isCampaignUpdated, setIsCampaignUpdated] = useState(false)
-    const [isDonating, setIsDonating] = useState(false)
-    const [donationSuccess, setDonationSuccess] = useState(false)
-    const [donationError, setDonationError] = useState<string | null>(null)
-    const [txHash, setTxHash] = useState<string | null>(null)
-    const [donationActivity, setDonationActivity] = useState<DonationEventApi[]>([])
+    const queryClient = useQueryClient()
+    const { data: campaign, isLoading: isCampaignLoading } = useQuery({
+        queryKey: ['campaign', id],
+        queryFn: async () => {
+            if (!id) return null;
+            const cacheKey = `campaign_${id}`
+            const cached = getCache(cacheKey)
+            if (cached) return cached
 
-
-
-    useEffect(() => {
-        const loadCampaign = async () => {
-                setIsLoading(true)
-                const cacheKey = `campaign_${id}`
-                const cached = getCache(cacheKey)
-                if (cached) {
-                    setCampaign(cached)
-                    setIsLoading(false)
-                }
-                try {
-                    const numericId = BigInt(id || '0')
-                    const chainCampaign = await onchainGetCampaign(numericId)
+            try {
+                const numericId = BigInt(id || '0')
+                const chainCampaign = await onchainGetCampaign(numericId)
                 let amountRaised = 0
                 let metaImage: string | undefined = undefined
                 let metaGoal: number | undefined = undefined
@@ -73,63 +65,70 @@ const CampaignDetails = () => {
                 let metaLoaded = false
                 try {
                     const metaCid = await getCampaignMetadataCid(numericId)
-                        if (metaCid) {
+                    if (metaCid) {
                         const meta = await fetch(getIPFSURL(metaCid)).then(r => r.json()).catch(() => null)
-                            if (meta) {
+                        if (meta) {
                             metaImage = meta.image
                             metaGoal = meta.goal
                             metaTitle = meta.title
                             metaDesc = meta.description
                             metaLoaded = true
-                            }
                         }
-                    } catch {}
-                    if (!chainCampaign && !metaLoaded) {
-                        setCampaign(null)
-                    setAllCampaigns([])
-                    return
                     }
-                    try {
-                        const donations = await onchainGetDonationsByCampaign(numericId)
-                        amountRaised = donations.totalRaisedHBAR
-                    } catch {}
+                } catch {}
+                
+                if (!chainCampaign && !metaLoaded) {
+                    return null
+                }
+                
+                try {
+                    const donations = await onchainGetDonationsByCampaign(numericId)
+                    amountRaised = donations.totalRaisedHBAR
+                } catch {}
+
                 const campaignObj: any = {
-                        id: Number(numericId),
-                        onchainId: Number(numericId),
+                    id: Number(numericId),
+                    onchainId: Number(numericId),
                     title: metaTitle || chainCampaign?.title,
                     description: metaDesc || chainCampaign?.description,
                     target: metaGoal !== undefined ? metaGoal : (chainCampaign ? Number(chainCampaign.goalHBAR) : 0),
-                        ngoWallet: chainCampaign?.ngo,
+                    ngoWallet: chainCampaign?.ngo,
                     image: metaImage || chainCampaign?.image,
-                        amountRaised,
-                        percentage: 0,
-                        active: chainCampaign?.active ?? true,
-                    }
+                    amountRaised,
+                    percentage: 0,
+                    active: chainCampaign?.active ?? true,
+                }
+                
                 const target = campaignObj.target || 0
                 campaignObj.percentage = target > 0 ? (amountRaised / target) * 100 : 0
-                    try {
-                        const apiCampaign = await getCampaignById(String(id))
-                        if (apiCampaign?.donationTotal != null) {
-                            const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
-                            if (backendRaised >= 0) {
-                                campaignObj.amountRaised = backendRaised
-                                campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
-                            }
+                
+                try {
+                    const apiCampaign = await getCampaignById(String(id))
+                    if (apiCampaign?.donationTotal != null) {
+                        const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
+                        if (backendRaised >= 0) {
+                            campaignObj.amountRaised = backendRaised
+                            campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
                         }
-                    } catch {}
-                    setCampaign(campaignObj)
-                    setCache(cacheKey, campaignObj)
+                    }
+                } catch {}
+                
+                setCache(cacheKey, campaignObj)
+                return campaignObj
             } catch {
-                setCampaign(null)
-            } finally {
-                setIsLoading(false)
+                return null
             }
         }
-        const loadRelated = async () => {
+    })
+
+    const { data: allCampaigns = [], isLoading: isRelatedLoading } = useQuery({
+        queryKey: ['related_campaigns', id],
+        queryFn: async () => {
+            const cacheKey = `campaigns_related_ex_${id}`
+            const cached = getCache(cacheKey)
+            if (cached) return cached
+
             try {
-                const cacheKey = `campaigns_related_ex_${id}`
-                const cached = getCache(cacheKey)
-                if (cached) setAllCampaigns(cached)
                 const list = await listAllCampaignsFromChain()
                 const currentId = Number(id || '0')
                 const filtered = list.filter((c: any) => Number(c.onchainId || c.id) !== currentId)
@@ -139,32 +138,27 @@ const CampaignDetails = () => {
                     const percentage = goal > 0 ? (raised / goal) * 100 : 0
                     return { ...c, goal, amountRaised: raised, percentage }
                 })
-                setAllCampaigns(mapped)
                 setCache(cacheKey, mapped)
+                return mapped
             } catch {
-                if (!getCache(`campaigns_related_ex_${id}`)) setAllCampaigns([])
+                return []
             }
         }
-        loadCampaign()
-        loadRelated()
-        if (id) {
-            apiGetDonationsByCampaign(id, 50)
-                .then(setDonationActivity)
-                .catch(() => setDonationActivity([]))
-        }
-    }, [id])
+    })
 
-    
-    useEffect(() => {
-        if (campaign && address && isConnected) {
-            const isCreator = campaign.ngoWallet?.toLowerCase() === address.toLowerCase() ||
-                             campaign.walletAddress?.toLowerCase() === address.toLowerCase()
-            setIsCampaignCreator(isCreator)
-            
-        } else {
-            setIsCampaignCreator(false)
-        }
-    }, [campaign, address, isConnected])
+    const { data: donationActivity = [] } = useQuery({
+        queryKey: ['campaign_donations', id],
+        queryFn: async () => {
+            if (!id) return []
+            try { return await apiGetDonationsByCampaign(id, 50) } catch { return [] }
+        },
+        enabled: !!id
+    })
+
+    const isLoading = isCampaignLoading || isRelatedLoading
+    const isCampaignCreator = campaign && address && isConnected ? 
+        (campaign.ngoWallet?.toLowerCase() === address.toLowerCase() || campaign.walletAddress?.toLowerCase() === address.toLowerCase()) 
+        : false
 
     if (isLoading) {
         return (
@@ -235,11 +229,9 @@ const CampaignDetails = () => {
                 amountRaised: updatedAmountRaised,
                 percentage: updatedPercentage
             }
-            setCampaign(updated)
+            queryClient.setQueryData(['campaign', id], updated)
             setCache(`campaign_${id}`, updated)
-            if (id) {
-                apiGetDonationsByCampaign(id, 50).then(setDonationActivity).catch(() => {})
-            }
+            if (id) { queryClient.invalidateQueries({ queryKey: ['campaign_donations', id] }) }
             setTimeout(() => {
                 setDonationSuccess(false)
                 setTxHash(null)
@@ -344,7 +336,7 @@ const CampaignDetails = () => {
                                         if (!window.confirm('Are you sure you want to delete this campaign? This action is irreversible.')) return;
                                         try {
                                             await deactivateCampaign(BigInt(campaign.onchainId || campaign.id));
-                                            setCampaign({ ...campaign, active: false });
+                                            queryClient.setQueryData(['campaign', id], { ...campaign, active: false });
                                             navigate('/user-profile');
                                         } catch (_e) {
                                             alert('Failed to delete campaign.');
@@ -462,7 +454,7 @@ const CampaignDetails = () => {
                         You may also like
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-                    {allCampaigns.slice(0, 5).map((relatedCampaign) => {
+                    {allCampaigns.slice(0, 5).map((relatedCampaign: any) => {
                         const target = Number(relatedCampaign.target || 0)
                         const amountRaised = Number(relatedCampaign.amountRaised || 0)
                         const percentage = relatedCampaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0)

@@ -141,6 +141,64 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
   }
 }
 
+export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
+  try {
+    const ids = await read<bigint[]>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignsByNGO', args: [ngoAddress] })
+    if (!ids || ids.length === 0) return [];
+
+    const campaigns: any[] = []
+    for (const id of ids) {
+      try {
+        const chainCampaign = await getCampaign(id)
+        let amountRaised = 0
+        try {
+          const donations = await getDonationsByCampaign(id)
+          amountRaised = donations.totalRaisedHBAR
+        } catch { }
+
+        let title = chainCampaign.title || ''
+        let description = chainCampaign.description || ''
+        let category: string | undefined
+        let image: string | undefined = chainCampaign.image
+        let target = Number(chainCampaign.goalHBAR)
+
+        if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
+          image = getIPFSURL(chainCampaign.image)
+        }
+
+        campaigns.push({
+          id: Number(id),
+          onchainId: Number(id),
+          title,
+          description,
+          category,
+          target,
+          amountRaised,
+          percentage: target > 0 ? (amountRaised / target) * 100 : 0,
+          ngoWallet: chainCampaign.ngo,
+          designer: chainCampaign.designer,
+          image,
+          active: chainCampaign.active ?? true,
+          createdAt: Date.now(),
+        })
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn(`Failed to load NGO campaign ${id}:`, e)
+        }
+        continue
+      }
+    }
+    return campaigns
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('Error listing campaigns by NGO from chain:', error)
+    }
+    return []
+  }
+}
+
 export async function getProofNftAddress(): Promise<HexAddress | null> {
   try {
     const tokenId = await read<string>({ address: CONTRACT, abi: ABI, functionName: 'nftTokenId', args: [] })
@@ -220,7 +278,7 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
 
 export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean }> {
   const c = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [id] })
-  const state = typeof c?.state === 'number' ? c.state : c?.[10] ?? 0
+  const state = typeof c?.state === 'number' ? c.state : c?.[11] ?? 0
   const active = state === CampaignState.Active
   let image = c?.imageHash ?? c?.[4]
   if (image && (String(image).startsWith('Qm') || String(image).startsWith('baf'))) {

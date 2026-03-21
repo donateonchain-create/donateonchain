@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
@@ -18,117 +19,74 @@ const ProductPage = () => {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const { address, isConnected } = useAccount()
-    const [selectedSize, setSelectedSize] = useState<string>('')
+        const [selectedSize, setSelectedSize] = useState<string>('')
     const [selectedQuantity, setSelectedQuantity] = useState<number>(1)
-    const [availableQuantity, setAvailableQuantity] = useState<number>(Infinity)
     const [openAccordion, setOpenAccordion] = useState<string | null>(null)
     const [showSuccessMessage, setShowSuccessMessage] = useState<boolean>(false)
     const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
-    const [customDesign, setCustomDesign] = useState<any>(null)
     const [currentImageView, setCurrentImageView] = useState<'front' | 'back'>('front')
-    const [isMyDesign, setIsMyDesign] = useState(false)
-    const [profileName, setProfileName] = useState<string>('')
-    const [isLoading, setIsLoading] = useState(true)
     const { addToCart } = useCart()
 
-    useEffect(() => {
-        const loadFromOnchain = async () => {
-            if (!id) return
+    const { data: customDesign, isLoading } = useQuery({
+        queryKey: ['product', id, address, isConnected],
+        queryFn: async () => {
+            if (!id) return null
             try {
                 const onchain = await getDesignById(BigInt(id))
-                if (!onchain) return
-                let price = Number(onchain.priceHBAR) / 1e18
-                try { const p = await getDesignPrice(BigInt(id)); price = Number(p) / 1e18 } catch {}
-                const index = await getDesignIndex(id.toString())
-                let meta: any = null
-                if (index?.metadataCid) {
-                    const url = getIPFSURL(index.metadataCid)
-                    try { meta = await fetch(url).then(r => r.json()) } catch {}
+                if (onchain) {
+                    let price = Number(onchain.priceHBAR) / 1e18
+                    try { const p = await getDesignPrice(BigInt(id)); price = Number(p) / 1e18 } catch {}
+                    const index = await getDesignIndex(id.toString())
+                    let meta: any = null
+                    if (index?.metadataCid) {
+                        const url = getIPFSURL(index.metadataCid)
+                        try { meta = await fetch(url).then(r => r.json()) } catch {}
+                    }
+                    return {
+                        id: Number(id),
+                        pieceName: meta?.name || onchain.title,
+                        description: meta?.description || '',
+                        price: `${price}`,
+                        campaign: Number(onchain.campaignId),
+                        color: '#FFFFFF',
+                        sizes: ['XS','S','M','L','XL','XXL'],
+                        frontDesign: index?.previewCid ? { url: getIPFSURL(index.previewCid) } : null,
+                        backDesign: null,
+                        walletAddress: onchain.designer,
+                        isNgo: false,
+                        quantity: 9999
+                    }
                 }
-                const assembled = {
-                    id: Number(id),
-                    pieceName: meta?.name || onchain.title,
-                    description: meta?.description || '',
-                    price: `${price}`,
-                    campaign: Number(onchain.campaignId),
-                    color: '#FFFFFF',
-                    sizes: ['XS','S','M','L','XL','XXL'],
-                    frontDesign: index?.previewCid ? { url: getIPFSURL(index.previewCid) } : null,
-                    backDesign: null,
-                    walletAddress: onchain.designer,
-                    isNgo: false
-                }
-                setCustomDesign(assembled)
-                setAvailableQuantity(9999)
-                setIsLoading(false)
             } catch {}
-        }
-        const loadDesign = async () => {
-            if (!id) { setIsLoading(false); return }
-            setIsLoading(true)
-            await loadFromOnchain()
+
             const userDesigns = getStorageJson<any[]>('userDesigns', [])
             const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
             const allDesigns = [...userDesigns, ...ngoDesigns]
             const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundDesign) {
-                setCustomDesign(foundDesign)
-                const qty = foundDesign.quantity || foundDesign.maxQuantity || 0
-                setAvailableQuantity(qty)
-                setIsLoading(false)
-                return
-            }
+            if (foundDesign) return foundDesign
+
             try {
-                const allDesigns = await getAllGlobalDesigns()
-            const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundDesign) {
-                setCustomDesign(foundDesign)
-                setIsLoading(false)
-                return
-            }
+                const allGlobalDesigns = await getAllGlobalDesigns()
+                const foundGlobalDesign = allGlobalDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
+                if (foundGlobalDesign) return foundGlobalDesign
+
                 if (address && isConnected) {
-                    const userDesigns = await getUserDesigns(address)
-                    const ngoDesigns = await getNGODesigns(address)
-                    const allOwnDesigns = [...userDesigns, ...ngoDesigns]
+                    const userDesignsList = await getUserDesigns(address)
+                    const ngoDesignsList = await getNGODesigns(address)
+                    const allOwnDesigns = [...userDesignsList, ...ngoDesignsList]
                     const foundOwnDesign = allOwnDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                    if (foundOwnDesign) {
-                        setCustomDesign(foundOwnDesign)
-                    }
+                    if (foundOwnDesign) return foundOwnDesign
                 }
             } catch {}
-            setIsLoading(false)
+            return null
         }
-        loadDesign()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [id])
-   
-    useEffect(() => {
-        setSelectedSize('')
-        setSelectedQuantity(1)
-        setOpenAccordion(null)
-        setShowSuccessMessage(false)
-        setShowDeleteModal(false)
-        setCurrentImageView('front')
-    }, [id])
-   
-    useEffect(() => {
-        const loadCreatorName = async () => {
-            if (customDesign && customDesign.walletAddress) {
-                setProfileName(customDesign.isNgo ? 'An NGO' : 'A Designer')
-            }
-        }
-        loadCreatorName()
-    }, [customDesign])
-   
-    useEffect(() => {
-        if (customDesign && isConnected && address) {
-            const isOwner = customDesign.walletAddress?.toLowerCase() === address.toLowerCase() || customDesign.connectedWalletAddress?.toLowerCase() === address.toLowerCase()
-            setIsMyDesign(isOwner)
-        } else if (customDesign && !isConnected) {
-            setIsMyDesign(false)
-        }
-    }, [customDesign, isConnected, address])
-   
+    })
+
+    const profileName = customDesign?.walletAddress ? (customDesign.isNgo ? 'An NGO' : 'A Designer') : ''
+    const isMyDesign = customDesign && isConnected && address ? 
+        (customDesign.walletAddress?.toLowerCase() === address.toLowerCase() || customDesign.connectedWalletAddress?.toLowerCase() === address.toLowerCase()) 
+        : false
+    const availableQuantity = customDesign ? (customDesign.quantity ?? customDesign.maxQuantity ?? 9999) : Infinity
     const product = customDesign || products.find(p => p.id === parseInt(id || '1'))
     const maxAvailable = customDesign ? availableQuantity : (product as any)?.stock ?? Infinity
 

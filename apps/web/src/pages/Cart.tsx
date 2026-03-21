@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Header from "../component/Header";
 import Footer from "../component/Footer";
 import Banner from "../component/Banner";
@@ -14,14 +14,10 @@ import { SkeletonCartRow } from '../component/Skeleton';
 const Cart = () => {
   const navigate = useNavigate();
   const { cartItems, updateQuantity, removeItem } = useCart();
-  const [customDesigns, setCustomDesigns] = useState<any[]>([]);
-  const [onchainPrices, setOnchainPrices] = useState<Record<number, number>>({});
-  const [isLoading, setIsLoading] = useState(true);
 
- 
-  useEffect(() => {
-    const loadDesigns = async () => {
-      setIsLoading(true);
+  const { data: customDesigns = [], isLoading: isDesignsLoading } = useQuery({
+    queryKey: ['customDesigns'],
+    queryFn: async () => {
       try {
         const storedDesigns = await getAllGlobalDesigns();
         const userDesigns = getStorageJson<any[]>('userDesigns', []);
@@ -30,20 +26,18 @@ const Cart = () => {
         const uniqueDesigns = Array.from(
           new Map(allDesigns.map(design => [design.id, design])).values()
         );
-        setCustomDesigns(uniqueDesigns);
+        return uniqueDesigns;
       } catch (error) {
         const userDesigns = getStorageJson<any[]>('userDesigns', []);
         const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
-        setCustomDesigns([...userDesigns, ...ngoDesigns]);
-      } finally {
-        setIsLoading(false);
+        return [...userDesigns, ...ngoDesigns];
       }
-    };
-    loadDesigns();
-  }, []);
+    }
+  });
 
-  useEffect(() => {
-    const loadOnchainPrices = async () => {
+  const { data: onchainPrices = {}, isLoading: isPricesLoading } = useQuery({
+    queryKey: ['cachedPrices', cartItems.map(item => item.id).sort().join(',')],
+    queryFn: async () => {
       const ids = Array.from(new Set(cartItems.map(ci => ci.id)));
       const next: Record<number, number> = {};
       for (const id of ids) {
@@ -53,10 +47,17 @@ const Cart = () => {
           if (hbar > 0) next[id] = hbar;
         } catch {}
       }
-      setOnchainPrices(next);
-    };
-    if (cartItems.length) loadOnchainPrices();
-  }, [cartItems]);
+      return next;
+    },
+    enabled: cartItems.length > 0
+  });
+
+  const isLoading = isDesignsLoading || isPricesLoading;
+
+ 
+
+
+
 
   const getProductById = (id: number) => {
     const customDesign = customDesigns.find((design) => design.id === id);

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, X } from 'lucide-react'
 import Header from "../component/Header"
@@ -26,32 +27,26 @@ const Checkout = () => {
     const [connectIntentPaymentMethod, setConnectIntentPaymentMethod] = useState<string | null>(null)
     const [checkoutError, setCheckoutError] = useState<string | null>(null)
     const [showOwnDesignError, setShowOwnDesignError] = useState(false)
-    const [customDesigns, setCustomDesigns] = useState<any[]>([])
-    const [designsLoading, setDesignsLoading] = useState(true)
     const [formData, setFormData] = useState({
         email: '', firstName: '', lastName: '', country: 'Nigeria', city: '', address: '', paymentMethod: ''
     })
    
-    useEffect(() => {
-        const loadDesigns = async () => {
-            setDesignsLoading(true)
+    const { data: customDesigns = [], isLoading: designsLoading } = useQuery({
+        queryKey: ['customDesigns'],
+        queryFn: async () => {
             try {
                 const storedDesigns = await getAllGlobalDesigns();
                 const userDesigns = getStorageJson<any[]>('userDesigns', [])
                 const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
                 const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
-                const uniqueDesigns = Array.from(new Map(allDesigns.map(design => [design.id, design])).values());
-                setCustomDesigns(uniqueDesigns);
+                return Array.from(new Map(allDesigns.map(design => [design.id, design])).values());
             } catch (error) {
                 const userDesigns = getStorageJson<any[]>('userDesigns', [])
                 const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
-                setCustomDesigns([...userDesigns, ...ngoDesigns])
-            } finally {
-                setDesignsLoading(false)
+                return [...userDesigns, ...ngoDesigns]
             }
         }
-        loadDesigns()
-    }, [])
+    })
 
     const getProductById = (id: number) => {
         const customDesign = customDesigns.find((design: any) => design.id === id)
@@ -125,12 +120,7 @@ const Checkout = () => {
         setFormData(prev => ({ ...prev, paymentMethod: method }))
     }
 
-    useEffect(() => {
-        if (isConnected && !formData.paymentMethod) {
-            const connectedMethod = getConnectedPaymentMethod()
-            setFormData(prev => ({ ...prev, paymentMethod: connectedMethod || 'metamask' }))
-        }
-    }, [isConnected, formData.paymentMethod])
+    const effectivePaymentMethod = formData.paymentMethod || (isConnected ? (getConnectedPaymentMethod() || 'metamask') : '')
 
     const handleConnectWallet = async () => {
         setShowConnectWalletModal(false)
@@ -201,7 +191,7 @@ const Checkout = () => {
 
     const handleCloseModal = () => { setShowSuccessModal(false); navigate('/') }
 
-    const isFormValid = () => { return formData.email && formData.firstName && formData.lastName && formData.city && formData.address && formData.paymentMethod }
+    const isFormValid = () => { return formData.email && formData.firstName && formData.lastName && formData.city && formData.address && effectivePaymentMethod }
 
     return (
         <div>
@@ -236,11 +226,11 @@ const Checkout = () => {
                             <div className="mb-8">
                                 <h2 className="text-lg font-semibold text-black mb-4">Payment Method</h2>
                                 <div className="space-y-4">
-                                    <div className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${formData.paymentMethod === 'metamask' ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                                    <div className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${effectivePaymentMethod === 'metamask' ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
                                         <span className="text-black font-medium">Metamask *</span>
                                         <Button variant={isPaymentMethodConnected('metamask') ? "secondary" : "primary-bw"} size="sm" onClick={() => handlePaymentMethodSelect('metamask')}>{isPaymentMethodConnected('metamask') ? 'Connected' : 'Connect Wallet'}</Button>
                                     </div>
-                                    <div className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${formData.paymentMethod === 'hashpack' ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                                    <div className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${effectivePaymentMethod === 'hashpack' ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
                                         <span className="text-black font-medium">Hashpack *</span>
                                         <Button variant={isPaymentMethodConnected('hashpack') ? "secondary" : "primary-bw"} size="sm" onClick={() => handlePaymentMethodSelect('hashpack')}>{isPaymentMethodConnected('hashpack') ? 'Connected' : 'Connect Wallet'}</Button>
                                     </div>

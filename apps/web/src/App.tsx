@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAccount } from 'wagmi'
 import Home from './pages/Home'
 import Shop from './pages/Shop'
@@ -22,88 +23,80 @@ import PrivateRoute from './component/PrivateRoute'
 import { ErrorBoundary } from './component/ErrorBoundary'
 import { getStorageJson } from './utils/safeStorage'
 import { getUserProfile, getNgoProfile } from './utils/storageApi'
+import { AuthProvider } from './context/AuthContext'
 
 const WAITLIST_MODE = import.meta.env.VITE_WAITLIST_MODE === "true"
 
 const MainAppRoutes = () => {
     const location = useLocation()
     const { isConnected, address } = useAccount()
-    const [showProfileSetup, setShowProfileSetup] = useState(false)
-    const [existingProfile, setExistingProfile] = useState<any>(null)
+    const [isDismissed, setIsDismissed] = useState(false)
     const isWaitlistPage = location.pathname === '/waitlist'
     const isAdminPage = location.pathname.startsWith('/admin')
 
-    useEffect(() => {
-        const checkProfileExists = async () => {
-            if (location.pathname === '/waitlist') return
-            if (isConnected && address) {
-                const sessionKey = `profileSetupShown_${address}`
-                const shownThisSession = sessionStorage.getItem(sessionKey)
-                
-                if (shownThisSession === 'true') {
-                    setShowProfileSetup(false)
-                    return
-                }
-                
-                const profileSetupCompleted = localStorage.getItem('profileSetupCompleted')
-                if (profileSetupCompleted === 'true') {
-                    setShowProfileSetup(false)
-                    return
-                }
-                
-                try {
-                    const userProfile = await getUserProfile(address)
-                    const ngoProfile = await getNgoProfile(address)
-                    
-                    if (userProfile && userProfile.name && userProfile.bio) {
-                        setShowProfileSetup(false)
-                        localStorage.setItem('profileSetupCompleted', 'true')
-                        return
-                    }
-                    
-                    if (ngoProfile && ngoProfile.name && ngoProfile.bio) {
-                        setShowProfileSetup(false)
-                        localStorage.setItem('profileSetupCompleted', 'true')
-                        return
-                    }
-                    
-                    const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
-                    if (profile && profile.name && profile.bio) {
-                        setShowProfileSetup(false)
-                        localStorage.setItem('profileSetupCompleted', 'true')
-                        return
-                    }
-                    if (profile) setExistingProfile(profile)
-                    const ngos = getStorageJson<any[]>('ngos', [])
-                    if (ngos.length > 0 && ngos[ngos.length - 1].ngoName && ngos[ngos.length - 1].missionStatement) {
-                        setShowProfileSetup(false)
-                        localStorage.setItem('profileSetupCompleted', 'true')
-                        return
-                    }
-                    
-                    setShowProfileSetup(true)
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error checking profile:', error)
-                    }
-                    const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
-                    if (profile && profile.name && profile.bio) {
-                        setShowProfileSetup(false)
-                        localStorage.setItem('profileSetupCompleted', 'true')
-                        return
-                    }
-                    if (profile) setExistingProfile(profile)
-                    setShowProfileSetup(true)
-                }
+    const { data: profileCheck } = useQuery({
+        queryKey: ['profileCheck', address],
+        queryFn: async () => {
+            if (!address) return { completed: true, profile: null }
+            
+            const sessionKey = `profileSetupShown_${address}`
+            if (sessionStorage.getItem(sessionKey) === 'true') {
+                return { completed: true, profile: null }
             }
-        }
-        
-        checkProfileExists()
-    }, [isConnected, address, location.pathname])
+            
+            if (localStorage.getItem('profileSetupCompleted') === 'true') {
+                return { completed: true, profile: null }
+            }
+            
+            try {
+                const userProfile = await getUserProfile(address)
+                const ngoProfile = await getNgoProfile(address)
+                
+                if (userProfile?.name && userProfile?.bio) {
+                    localStorage.setItem('profileSetupCompleted', 'true')
+                    return { completed: true, profile: null }
+                }
+                
+                if (ngoProfile?.name && ngoProfile?.bio) {
+                    localStorage.setItem('profileSetupCompleted', 'true')
+                    return { completed: true, profile: null }
+                }
+                
+                const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
+                if (profile?.name && profile?.bio) {
+                    localStorage.setItem('profileSetupCompleted', 'true')
+                    return { completed: true, profile: null }
+                }
+                
+                const ngos = getStorageJson<any[]>('ngos', [])
+                if (ngos.length > 0 && ngos[ngos.length - 1].ngoName && ngos[ngos.length - 1].missionStatement) {
+                    localStorage.setItem('profileSetupCompleted', 'true')
+                    return { completed: true, profile: null }
+                }
+                
+                return { completed: false, profile }
+            } catch (error) {
+                if (import.meta.env.DEV) {
+                    // eslint-disable-next-line no-console
+                    console.error('Error checking profile:', error)
+                }
+                const profile = getStorageJson<{ name?: string; bio?: string } | null>('userProfile', null)
+                if (profile?.name && profile?.bio) {
+                    localStorage.setItem('profileSetupCompleted', 'true')
+                    return { completed: true, profile: null }
+                }
+                return { completed: false, profile }
+            }
+        },
+        enabled: isConnected && !!address && !isWaitlistPage && !isAdminPage,
+        staleTime: Infinity
+    })
+
+    const showProfileSetup = profileCheck && !profileCheck.completed && !isDismissed && !isWaitlistPage
+    const existingProfile = profileCheck?.profile || undefined
 
     const handleCloseProfileSetup = () => {
-        setShowProfileSetup(false)
+        setIsDismissed(true)
         localStorage.setItem('profileSetupCompleted', 'true')
         if (address) {
             sessionStorage.setItem(`profileSetupShown_${address}`, 'true')
@@ -113,8 +106,8 @@ const MainAppRoutes = () => {
     return (
         <>
             {!isWaitlistPage && !isAdminPage && <Header />}
-            <ScrollToTop />
-            <ProfileSetupModal isOpen={showProfileSetup && !isWaitlistPage} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
+            <ScrollToTop key={location.pathname} />
+            <ProfileSetupModal key={existingProfile?.name || address || 'new'} isOpen={!!showProfileSetup && !isWaitlistPage} onClose={handleCloseProfileSetup} existingProfile={existingProfile} />
             <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/shop" element={<Shop />} />
@@ -137,6 +130,7 @@ const MainAppRoutes = () => {
 const App = () => {
     return (
         <ErrorBoundary>
+            <AuthProvider>
             <CartProvider>
                 <Router>
                     {WAITLIST_MODE ? (
@@ -149,6 +143,7 @@ const App = () => {
                     )}
                 </Router>
             </CartProvider>
+            </AuthProvider>
         </ErrorBoundary>
     )
 }

@@ -3,254 +3,195 @@ import Footer from "../component/Footer";
 import Button from "../component/Button";
 import { SkeletonProfile, SkeletonCard } from "../component/Skeleton";
 import { Plus, X, Camera, Copy, Check, Loader2, XCircle } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { getStorageJson } from '../utils/safeStorage'
 import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage } from '../utils/storageApi'
-import { getUserProofNFTs } from '../onchain/adapter';
+import { getUserProofNFTs, listCampaignsByNGO } from '../onchain/adapter';
 import { getUserRoles, createCampaignByNGO } from '../onchain/adapter';
-import { listAllCampaignsFromChain } from '../onchain/adapter';
 import CreateCampaignModal from '../component/CreateCampaignModal';
 import { getIPFSURL, uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
 import { keccak256, stringToHex } from 'viem';
 import { storeHash } from '../api/relayer';
 import { getOrders } from '../api'
 
+interface Design {
+    id: number;
+    pieceName: string;
+    campaign: string;
+    price: string;
+    createdAt: string;
+    type: string;
+    color: string;
+    frontDesign?: {
+        url?: string;
+        dataUrl?: string;
+    } | null;
+    backDesign?: {
+        url?: string;
+        dataUrl?: string;
+    } | null;
+}
+
 const UserProfile = () => {
     const navigate = useNavigate();
     const { address, isConnected } = useAccount();
+        const queryClient = useQueryClient();
     const [activeCategory, setActiveCategory] = useState<'NFTs' | 'History' | 'Created' | 'Campaigns'>('NFTs');
-    const [myNfts, setMyNfts] = useState<Array<{ tokenId: bigint; tokenURI?: string; image?: string }>>([]);
-    const [isLoadingNfts, setIsLoadingNfts] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [createdDesigns, setCreatedDesigns] = useState<any[]>([]);
     const [copied, setCopied] = useState(false);
-    const [profileData, setProfileData] = useState({
-        name: '',
-        bio: '',
-        bannerImage: null as string | null,
-        profileImage: null as string | null
-    });
-    const [formData, setFormData] = useState({
-        name: '',
-        bio: ''
-    });
+    
+    // Edit Profile Modal State
+    const [formData, setFormData] = useState({ name: '', bio: '' });
     const [bannerImage, setBannerImage] = useState<string | null>(null);
     const [profileImage, setProfileImage] = useState<string | null>(null);
-    useEffect(() => {
-        const loadNfts = async () => {
-            if (!address) return;
-            setIsLoadingNfts(true);
-            try {
-                const nfts = await getUserProofNFTs(address as `0x${string}`);
-                setMyNfts(nfts);
-            } catch (_e) {
-                if (import.meta.env.DEV) {
-                    // eslint-disable-next-line no-console
-                    console.error('Failed to load NFTs', _e);
-                }
-            } finally {
-                setIsLoadingNfts(false);
-            }
-        };
-        loadNfts();
-    }, [address]);
     const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [statistics, setStatistics] = useState({
-        causesSupported: 0,
-        totalDonated: 0,
-        totalProfit: 0,
-        totalDesigns: 0
-    });
-    const [isDesigner, setIsDesigner] = useState(false);
-    const [isNgo, setIsNgo] = useState(false);
 
-    const [createdCampaigns, setCreatedCampaigns] = useState<any[]>([]);
+    // Create Campaign Modal State
     const [isCreateCampaignModalOpen, setIsCreateCampaignModalOpen] = useState(false);
-    const [orders, setOrders] = useState<any[]>([]);
     const [ordersPage, setOrdersPage] = useState(0);
     const [isUploadingCampaign, setIsUploadingCampaign] = useState(false);
     const [isCampaignCreatedSuccessfully, setIsCampaignCreatedSuccessfully] = useState(false);
     const [isCampaignCreateError, setIsCampaignCreateError] = useState(false);
     const [campaignErrorText, setCampaignErrorText] = useState('');
-    const inFlightRef = useRef(false)
+    const inFlightRef = useRef(false);
 
+    // --- Queries ---
 
-    useEffect(() => {
-        const loadProfile = async () => {
+    const { data: myNfts = [], isLoading: isLoadingNfts } = useQuery({
+        queryKey: ['userNfts', address],
+        queryFn: async () => {
+            if (!address) return [];
+            return await getUserProofNFTs(address as `0x${string}`);
+        },
+        enabled: !!address,
+    });
+
+    const { data: profileData = { name: 'User', bio: '', bannerImage: null, profileImage: null }, isLoading: isLoadingProfile } = useQuery({
+        queryKey: ['userProfile', address, isConnected],
+        queryFn: async () => {
             if (address && isConnected) {
                 try {
                     const storedProfile = await getUserProfile(address);
                     if (storedProfile) {
-                        setProfileData({
+                        return {
                             name: storedProfile.name || 'User',
                             bio: storedProfile.bio || '',
                             bannerImage: storedProfile.bannerImage || null,
                             profileImage: storedProfile.profileImage || null
-                        });
-                    } else {
-                        const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
-                        if (profile) {
-                            setProfileData({
-                                name: profile.name || 'User',
-                                bio: profile.bio || '',
-                                bannerImage: profile.bannerImage ?? null,
-                                profileImage: profile.profileImage ?? null
-                            });
-                        }
+                        };
                     }
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error loading profile from API:', error);
-                    }
-                    const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
-                    if (profile) {
-                        setProfileData({
-                            name: profile.name || 'User',
-                            bio: profile.bio || '',
-                            bannerImage: profile.bannerImage ?? null,
-                            profileImage: profile.profileImage ?? null
-                        });
-                    }
+                } catch {
+                    // Fallback to local
                 }
-            } else {
-        const profile = getStorageJson<{ name?: string; bio?: string; bannerImage?: string | null; profileImage?: string | null } | null>('userProfile', null);
-        if (profile) {
-            setProfileData({
-                name: profile.name || 'User',
-                bio: profile.bio || '',
-                bannerImage: profile.bannerImage ?? null,
-                profileImage: profile.profileImage ?? null
-            });
+            }
+            const profile = getStorageJson<any>('userProfile', null);
+            if (profile) {
+                return {
+                    name: profile.name || 'User',
+                    bio: profile.bio || '',
+                    bannerImage: profile.bannerImage ?? null,
+                    profileImage: profile.profileImage ?? null
+                };
+            }
+            return { name: 'User', bio: '', bannerImage: null, profileImage: null };
         }
+    });
+
+    const { data: roles = { isDesigner: false, isNgo: false }, isLoading: isLoadingRoles } = useQuery({
+        queryKey: ['userRoles', address],
+        queryFn: async () => {
+            if (!address || !isConnected) return { isDesigner: false, isNgo: false };
+            return await getUserRoles(address as `0x${string}`);
+        },
+        enabled: !!address && isConnected,
+        refetchInterval: 10000,
+    });
+    const { isDesigner, isNgo } = roles;
+
+    const { data: createdDesigns = [] } = useQuery<Design[]>({
+        queryKey: ['userDesigns', address],
+        queryFn: async () => {
+            if (!address || !isConnected) return getStorageJson<Design[]>('userDesigns', []);
+            try {
+                let storedDesigns = await getUserDesigns(address);
+                const designsToMigrate = storedDesigns.filter((design: any) => 
+                    (design.frontDesign?.dataUrl && !design.frontDesign?.url) || 
+                    (design.backDesign?.dataUrl && !design.backDesign?.url)
+                );
+                
+                if (designsToMigrate.length > 0) {
+                    await Promise.all(designsToMigrate.map((design: any) => migrateDesignImagesToStorage(design, address, 'user')));
+                    storedDesigns = await getUserDesigns(address);
+                }
+                if (storedDesigns && storedDesigns.length > 0) {
+                    return storedDesigns.map((design: any) => ({
+                        id: parseInt(design.id),
+                        ...design
+                    }));
+                }
+                return getStorageJson<Design[]>('userDesigns', []);
+            } catch {
+                return getStorageJson<Design[]>('userDesigns', []);
             }
-        };
+        },
+        enabled: !!address && isConnected,
+    });
 
-        loadProfile();
-    }, [address, isConnected]);
+    const { data: createdCampaigns = [] } = useQuery({
+        queryKey: ['userCampaigns', address],
+        queryFn: async () => {
+            if (!address || !isConnected || !isNgo) return [];
+            try {
+                return await listCampaignsByNGO(address);
+            } catch {
+                return [];
+            }
+        },
+        enabled: !!address && isConnected && !!isNgo,
+    });
 
-    useEffect(() => {
-        const checkRoles = async () => {
+    const { data: orders = [] } = useQuery({
+        queryKey: ['userOrders', address],
+        queryFn: async () => {
+            if (!address || !isConnected) return [];
+            try {
+                const res = await getOrders({ buyer: address, limit: 100 });
+                return res.items || [];
+            } catch {
+                return [];
+            }
+        },
+        enabled: !!address && isConnected,
+    });
+
+    const statistics = {
+        causesSupported: 0,
+        totalDonated: 0,
+        totalProfit: 0,
+        totalDesigns: createdDesigns.length
+    };
+
+    const isLoading = isLoadingProfile || isLoadingRoles;
+
+    const saveProfileMutation = useMutation({
+        mutationFn: async (updatedProfile: any) => {
+            localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
             if (address && isConnected) {
-                try {
-                    const roles = await getUserRoles(address as `0x${string}`);
-                    setIsDesigner(roles.isDesigner);
-                    setIsNgo(roles.isNgo);
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error checking roles:', error);
-                    }
-                }
+                await saveUserProfileWithImages(address, updatedProfile);
             }
-        };
-        checkRoles();
-
-        const interval = setInterval(checkRoles, 10000);
-        return () => clearInterval(interval);
-    }, [address, isConnected]);
-
-
-
-    useEffect(() => {
-        const loadDesigns = async () => {
-            if (address && isConnected) {
-                try {
-                    let storedDesigns = await getUserDesigns(address);
-                    const designsToMigrate = storedDesigns.filter((design: any) => 
-                        (design.frontDesign?.dataUrl && !design.frontDesign?.url) || 
-                        (design.backDesign?.dataUrl && !design.backDesign?.url)
-                    );
-                    
-                    if (designsToMigrate.length > 0) {
-                        if (import.meta.env.DEV) {
-                            // eslint-disable-next-line no-console
-                            console.log(`Migrating ${designsToMigrate.length} designs to storage...`);
-                        }
-                        await Promise.all(designsToMigrate.map((design: any) => migrateDesignImagesToStorage(design, address, 'user')));
-                        
-                       
-                        storedDesigns = await getUserDesigns(address);
-                    }
-                    if (storedDesigns && storedDesigns.length > 0) {
-                        const formattedDesigns = storedDesigns.map((design: any) => ({
-                            id: parseInt(design.id),
-                            ...design
-                        }));
-                        setCreatedDesigns(formattedDesigns);
-                    } else {
-                        setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
-                    }
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error loading designs from API:', error);
-                    }
-                    setCreatedDesigns(getStorageJson<any[]>('userDesigns', []));
-                }
-        };
-
-        loadDesigns();
-    }, [address, isConnected]);
-
-    useEffect(() => {
-        const loadCampaigns = async () => {
-            if (address && isConnected && isNgo) {
-                try {
-                    const chainCampaigns = await listAllCampaignsFromChain();
-                    const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
-                    setCreatedCampaigns(userChain);
-                } catch (_e) {
-                    setCreatedCampaigns([]);
-                }
-            }
-        };
-        loadCampaigns();
-    }, [address, isConnected, isNgo]);
-
-    useEffect(() => {
-        const loadOrders = async () => {
-            if (address && isConnected) {
-                try {
-                    const res = await getOrders({ buyer: address, limit: 100 })
-                    setOrders(res.items || [])
-                } catch (_e) {
-                    setOrders([])
-                }
-            }
+            return updatedProfile;
+        },
+        onSuccess: (updatedProfile) => {
+            queryClient.setQueryData(['userProfile', address, isConnected], updatedProfile);
+            setShowSuccessMessage(true);
+            setTimeout(() => setShowSuccessMessage(false), 3000);
+            setIsEditModalOpen(false);
         }
-        loadOrders()
-    }, [address, isConnected])
-
-    useEffect(() => {
-        const calculateStats = async () => {
-            if (address && isConnected) {
-                try {
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error loading stats from API:', error);
-                    }
-                }
-            } else {
-                // No connection fallback
-            }
-
-            setStatistics({
-                causesSupported: 0, // No longer calculated from donationHistory
-                totalDonated: 0, // No longer calculated from donationHistory
-                totalProfit: 0, // No longer calculated from purchaseHistory
-                totalDesigns: createdDesigns.length
-            });
-            setIsLoading(false);
-        };
-
-        calculateStats();
-    }, [createdDesigns, address, isConnected]);
+    });
+    const isSaving = saveProfileMutation.isPending;
 
     const handleCategoryChange = (category: 'NFTs' | 'History' | 'Created' | 'Campaigns') => {
         setActiveCategory(category);
@@ -286,47 +227,15 @@ const UserProfile = () => {
         }
     };
 
-    const handleSaveProfile = async () => {
-        setIsSaving(true);
-
+    const handleSaveProfile = () => {
+        if (!address || !isConnected) return;
         const updatedProfile = {
             name: formData.name,
             bio: formData.bio,
             bannerImage: bannerImage || profileData.bannerImage,
             profileImage: profileImage || profileData.profileImage
         };
-
-        setProfileData(prev => ({
-            ...prev,
-            name: formData.name,
-            bio: formData.bio,
-            bannerImage: bannerImage || prev.bannerImage,
-            profileImage: profileImage || prev.profileImage
-        }));
-
-        localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-
-        if (address && isConnected) {
-            try {
-                const result = await saveUserProfileWithImages(address, updatedProfile);
-                void result
-            } catch (error) {
-                if (import.meta.env.DEV) {
-                    // eslint-disable-next-line no-console
-                    console.error('Error saving profile to API:', error);
-                }
-            }
-        } else {
-        }
-
-        setIsSaving(false);
-        setIsEditModalOpen(false);
-
-        setShowSuccessMessage(true);
-
-        setTimeout(() => {
-            setShowSuccessMessage(false);
-        }, 3000);
+        saveProfileMutation.mutate(updatedProfile);
     };
 
     const handleInputChange = (field: string, value: string) => {
@@ -382,8 +291,13 @@ const UserProfile = () => {
             const meta = { ...baseMeta, contentHash };
             const metadataCid = await uploadMetadataToIPFS(meta);
             if (!metadataCid) throw new Error('Failed to upload metadata to IPFS');
-            await storeHash(imageCid, address!);
-            await storeHash(metadataCid, address!);
+            try {
+                // Background tracking (optional in v2 contract)
+                await storeHash(imageCid, address!);
+                await storeHash(metadataCid, address!);
+            } catch (e) {
+                console.warn('relayer storeHash failed, proceeding with on-chain creation:', e)
+            }
             const { receipt } = await createCampaignByNGO({ designer: address as `0x${string}`, title: campaignData.campaignTitle, description: campaignData.description, imageCid: imageCid, metadataCid, targetHBAR: goal });
 
             const receiptStatus = receipt?.status as string | number | undefined
@@ -394,11 +308,7 @@ const UserProfile = () => {
             setIsCampaignCreatedSuccessfully(true)
             setIsCreateCampaignModalOpen(false)
             // New logic: refetch campaigns after creation
-            do {
-                const chainCampaigns = await listAllCampaignsFromChain();
-                const userChain = (chainCampaigns || []).filter((c: any) => c.ngoWallet?.toLowerCase() === address.toLowerCase());
-                setCreatedCampaigns(userChain);
-            } while (false);
+            queryClient.invalidateQueries({ queryKey: ['userCampaigns', address] });
         } catch (err: any) {
             setIsCampaignCreateError(true)
             setCampaignErrorText(err?.message || 'Failed to create campaign')
@@ -1001,21 +911,10 @@ const UserProfile = () => {
             {isCreateCampaignModalOpen && (
                 <CreateCampaignModal
                     isOpen={isCreateCampaignModalOpen}
-                    onClose={async () => {
+                    onClose={() => {
                         setIsCreateCampaignModalOpen(false);
                         if (address && isConnected && isNgo) {
-                            try {
-                                const allCampaigns = await listAllCampaignsFromChain();
-                                const userCampaigns = allCampaigns.filter((c: any) =>
-                                    c.ngoWallet?.toLowerCase() === address.toLowerCase()
-                                );
-                                setCreatedCampaigns(userCampaigns);
-                            } catch (error) {
-                                if (import.meta.env.DEV) {
-                                    // eslint-disable-next-line no-console
-                                    console.error('Error reloading campaigns:', error);
-                                }
-                            }
+                            queryClient.invalidateQueries({ queryKey: ['userCampaigns', address] });
                         }
                     }}
                     onSubmit={handleCreateCampaign}

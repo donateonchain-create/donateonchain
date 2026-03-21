@@ -2,12 +2,30 @@ import { getDesignIndex as getDesignIndexFromApi } from '../api/designIndex'
 import { getCampaignMetadataCid } from '../onchain/adapter'
 import { getStorageJson } from './safeStorage'
 import { getIPFSURL, unpinCID, uploadFileToIPFS } from './ipfs'
+import { getAuthHeaders } from '../api/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
 const isDev = import.meta.env.DEV
 
-async function apiJson(path: string, init?: RequestInit) {
-  const res = await fetch(`${API_URL}${path}`, init)
+// For public reads — no auth headers attached
+async function apiJsonRead(path: string, init?: RequestInit) {
+  const headers = new Headers(init?.headers || {})
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `Request failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+// For authenticated writes — attaches JWT Bearer or Admin API Key
+async function apiJsonWrite(path: string, init?: RequestInit) {
+  const headers = new Headers(init?.headers || {})
+  const authHeaders = getAuthHeaders()
+  for (const [k, v] of Object.entries(authHeaders)) {
+    headers.set(k, v)
+  }
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(text || `Request failed: ${res.status}`)
@@ -16,7 +34,7 @@ async function apiJson(path: string, init?: RequestInit) {
 }
 
 async function kvSet(collectionName: string, key: string, data: any) {
-  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
+  return apiJsonWrite(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data }),
@@ -24,17 +42,17 @@ async function kvSet(collectionName: string, key: string, data: any) {
 }
 
 async function kvGet(collectionName: string, key: string) {
-  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
+  return apiJsonRead(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, {
     method: 'GET',
   })
 }
 
 async function kvList(collectionName: string) {
-  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}`, { method: 'GET' })
+  return apiJsonRead(`/api/kv/${encodeURIComponent(collectionName)}`, { method: 'GET' })
 }
 
 async function kvDelete(collectionName: string, key: string) {
-  return apiJson(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
+  return apiJsonWrite(`/api/kv/${encodeURIComponent(collectionName)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
 }
 
 export const saveToStore = async (collectionName: string, documentId: string, data: any) => {
@@ -472,49 +490,54 @@ export const saveNgoProfileWithImages = async (walletAddress: string, profileDat
   }
 }
 
-export const saveNgoApplication = async (ngoData: any) => {
+export const saveNgoApplication = async (ngoData: any, signature?: string, timestamp?: string) => {
   try {
-    const docId =
-      ngoData.connectedWalletAddress?.toLowerCase() ||
-      ngoData.walletAddress?.toLowerCase() ||
-      Date.now().toString()
-    const result = await saveToStore('ngoApplications', docId, ngoData)
-
-    return result
-  } catch (error) {
-    if (isDev) {
-      // eslint-disable-next-line no-console
-      console.error('Error saving NGO application:', error)
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (signature && timestamp) {
+      headers['x-wallet-signature'] = signature;
+      headers['x-wallet-timestamp'] = timestamp;
     }
-    return false
+    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(ngoData)
+    }).then(r => r.json());
+    return fromApi.ok ? true : false;
+  } catch (error) {
+    if (import.meta.env.DEV) console.error('Error saving NGO application:', error);
+    return false;
   }
 }
 
 export const getNgoApplications = async () => {
   try {
-    const result = await getAllFromStore('ngoApplications')
-    return result
+    const authHeaders = getAuthHeaders();
+    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/admin/ngo-applications`, {
+      headers: authHeaders
+    }).then(r => r.json());
+    return fromApi.items || [];
   } catch (error) {
-    if (isDev) {
-      // eslint-disable-next-line no-console
-      console.error('Error getting NGO applications:', error)
-    }
-    return []
+    if (import.meta.env.DEV) console.error('Error getting NGO applications:', error);
+    return [];
   }
 }
 
-export const getNgoApplicationByWallet = async (walletAddress: string) => {
+export const getNgoApplicationByWallet = async (walletAddress: string, signature?: string, timestamp?: string) => {
   try {
-    const docId = walletAddress.toLowerCase()
-    const result = await getFromStore('ngoApplications', docId)
-
-    return result
-  } catch (error) {
-    if (isDev) {
-      // eslint-disable-next-line no-console
-      console.error('Error getting NGO application:', error)
+    const headers: any = {};
+    if (signature && timestamp) {
+      headers['x-wallet-signature'] = signature;
+      headers['x-wallet-timestamp'] = timestamp;
+    } else {
+      Object.assign(headers, getAuthHeaders());
     }
-    return null
+    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications/${walletAddress}`, {
+      headers
+    }).then(r => r.json());
+    return fromApi.error ? null : fromApi;
+  } catch (error) {
+    if (import.meta.env.DEV) console.error('Error getting NGO application:', error);
+    return null;
   }
 }
 
@@ -539,23 +562,15 @@ export const updateNgoApplicationStatus = async (
   approvalTransactionHash?: string
 ) => {
   try {
-    const docId = walletAddress.toLowerCase()
-    const updateData: any = {
-      status: status,
-      rejectionReason: reason,
-      statusUpdatedAt: new Date().toISOString(),
-    }
-    if (approvalTransactionHash) {
-      updateData.approvalTransactionHash = approvalTransactionHash
-    }
-    await updateStore('ngoApplications', docId, updateData)
-    return true
+    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/admin/ngo-applications/${walletAddress}`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, rejectionReason: reason })
+    }).then(r => r.json());
+    return fromApi.ok ? true : false;
   } catch (error) {
-    if (isDev) {
-      // eslint-disable-next-line no-console
-      console.error('Error updating NGO application status:', error)
-    }
-    return false
+    if (import.meta.env.DEV) console.error('Error updating NGO application status:', error);
+    return false;
   }
 }
 
