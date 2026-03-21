@@ -14,6 +14,7 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@hashgraph/sdk": "^2.81.0",
     "@prisma/client": "^6.1.0",
     "cors": "^2.8.5",
     "donate-onchain": "file:../..",

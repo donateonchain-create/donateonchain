@@ -180,6 +180,42 @@ contract DonateOnChainTest is Test {
         );
     }
 
+    function test_UpdateCampaign() public {
+        uint256 campaignId = _createVerifiedCampaign();
+
+        vm.startPrank(ngo);
+        donateOnChain.updateCampaign(
+            campaignId,
+            "Save the Dolphins",
+            "Help protect dolphins in the Pacific",
+            "QmHash456",
+            bytes32(uint256(2)),
+            20 ether
+        );
+        vm.stopPrank();
+
+        DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(campaignId);
+        assertEq(campaign.title, "Save the Dolphins");
+        assertEq(campaign.description, "Help protect dolphins in the Pacific");
+        assertEq(campaign.imageHash, "QmHash456");
+        assertEq(campaign.targetAmount, 20 ether);
+    }
+
+    function test_RevertWhen_UpdateCampaignUnauthorized() public {
+        uint256 campaignId = _createVerifiedCampaign();
+
+        vm.prank(donor);
+        vm.expectRevert();
+        donateOnChain.updateCampaign(
+            campaignId,
+            "Hack",
+            "Hack",
+            "QmHack",
+            bytes32(uint256(3)),
+            1 ether
+        );
+    }
+
     // ============ Campaign Vetting Tests ============
 
     function test_VetCampaignApprove() public {

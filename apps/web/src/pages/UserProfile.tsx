@@ -151,6 +151,8 @@ const UserProfile = () => {
             }
         },
         enabled: !!address && isConnected && !!isNgo,
+        refetchOnMount: true,
+        staleTime: 0,
     });
 
     const { data: orders = [] } = useQuery({

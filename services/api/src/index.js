@@ -17,6 +17,7 @@ import kvRoutes from './routes/kv.js'
 import waitlistRoutes from './routes/waitlist.js'
 import designIndexRoutes from './routes/designIndex.js'
 import kycAdminRoutes from './routes/kycAdmin.js'
+import nftRoutes from './routes/nft.js'
 
 const prisma = new PrismaClient()
 
@@ -1618,6 +1619,7 @@ app.delete('/api/ipfs/unpin/:cid', async (req, res) => {
 app.use('/api', authRoutes)
 app.use('/api', ngoRoutes)
 app.use('/api', kycAdminRoutes)
+app.use('/api/nft', nftRoutes)
 
 app.use((err, req, res, _next) => {
   req.log?.error(err, 'unhandled_error')

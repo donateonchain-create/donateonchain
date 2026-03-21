@@ -10,7 +10,7 @@ export const hederaMainnet = {
   id: 295,
   name: 'Hedera Mainnet',
   nativeCurrency: {
-    decimals: 18,
+    decimals: 8,
     name: 'HBAR',
     symbol: 'HBAR'
   },
@@ -32,7 +32,7 @@ export const hederaTestnet = {
   id: 296,
   name: 'Hedera Testnet',
   nativeCurrency: {
-    decimals: 18,
+    decimals: 8,
     name: 'HBAR',
     symbol: 'HBAR'
   },
