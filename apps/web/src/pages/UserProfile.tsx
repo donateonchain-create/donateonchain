@@ -13,9 +13,8 @@ import { getUserProofNFTs, listCampaignsByNGO } from '../onchain/adapter';
 import { getUserRoles, createCampaignByNGO } from '../onchain/adapter';
 import CreateCampaignModal from '../component/CreateCampaignModal';
 import { getIPFSURL, uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
-import { keccak256, stringToHex } from 'viem';
+import { keccak256, stringToHex, formatUnits } from 'viem';
 import { storeHash } from '../api/relayer';
-import { getOrders } from '../api'
 
 interface Design {
     id: number;
@@ -51,7 +50,6 @@ const UserProfile = () => {
 
     // Create Campaign Modal State
     const [isCreateCampaignModalOpen, setIsCreateCampaignModalOpen] = useState(false);
-    const [ordersPage, setOrdersPage] = useState(0);
     const [isUploadingCampaign, setIsUploadingCampaign] = useState(false);
     const [isCampaignCreatedSuccessfully, setIsCampaignCreatedSuccessfully] = useState(false);
     const [isCampaignCreateError, setIsCampaignCreateError] = useState(false);
@@ -155,23 +153,12 @@ const UserProfile = () => {
         staleTime: 0,
     });
 
-    const { data: orders = [] } = useQuery({
-        queryKey: ['userOrders', address],
-        queryFn: async () => {
-            if (!address || !isConnected) return [];
-            try {
-                const res = await getOrders({ buyer: address, limit: 100 });
-                return res.items || [];
-            } catch {
-                return [];
-            }
-        },
-        enabled: !!address && isConnected,
-    });
-
     const statistics = {
         causesSupported: new Set(myNfts.map(n => n.campaignId.toString())).size,
-        totalDonated: myNfts.reduce((sum, nft) => sum + (Number(nft.amount || 0) / 1e18), 0),
+        totalDonated: myNfts.reduce((sum, nft) => {
+            if (!nft.amount || nft.amount <= 0n) return sum;
+            return sum + parseFloat(formatUnits(nft.amount, 8));
+        }, 0),
         totalProfit: 0,
         totalDesigns: createdDesigns.length
     };
@@ -584,7 +571,9 @@ const UserProfile = () => {
                                                 <div className="text-xs mt-1.5 flex flex-col gap-1">
                                                     <div className="font-medium text-gray-800 flex items-center gap-1.5">
                                                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                                        {nft.amount ? `${(Number(nft.amount) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR Donated` : `Donated`}
+                                                        {nft.amount && nft.amount > 0n
+                                                            ? `${parseFloat(formatUnits(nft.amount, 8)).toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR Donated`
+                                                            : `Donated`}
                                                     </div>
                                                     <div className="flex items-center justify-between text-gray-500">
                                                         <span>{nft.timestamp ? new Date(Number(nft.timestamp) * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : `NFT #${nft.tokenId.toString()}`}</span>
@@ -601,35 +590,56 @@ const UserProfile = () => {
 
                     {activeCategory === 'History' && (
                         <div className="mb-40">
-                            {orders.length === 0 ? (
+                            {isLoadingNfts ? (
+                                <div className="space-y-3">
+                                    {[...Array(4)].map((_, i) => (
+                                        <div key={i} className="border rounded-lg p-4 animate-pulse">
+                                            <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+                                            <div className="h-3 bg-gray-100 rounded w-1/4"></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : myNfts.length === 0 ? (
                                 <div className="text-center py-12">
                                     <div className="text-6xl mb-4">📜</div>
                                     <h3 className="text-xl font-semibold text-gray-600 mb-2">No transaction history</h3>
-                                    <p className="text-gray-500">Your purchase and donation history will appear here</p>
+                                    <p className="text-gray-500">Your donation history will appear here</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {orders.slice(ordersPage * 10, ordersPage * 10 + 10).map((o, idx) => (
-                                        <div key={idx} className="border rounded-lg p-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <div className="text-sm font-medium">Order with {o.items?.length || 0} item(s)</div>
-                                                    <div className="text-xs text-gray-500 mt-1">{new Date(o.createdAt || Date.now()).toLocaleString()}</div>
+                                    {[...myNfts]
+                                        .sort((a, b) => Number((b.timestamp ?? 0n) - (a.timestamp ?? 0n)))
+                                        .map((nft, idx) => {
+                                            const tokenId = import.meta.env.VITE_NFT_TOKEN_ID || '0.0.8318134'
+                                            const hashScanUrl = `https://hashscan.io/testnet/token/${tokenId}/${nft.tokenId.toString()}`
+                                            const amountDisplay = nft.amount && nft.amount > 0n
+                                                ? `${parseFloat(formatUnits(nft.amount, 8)).toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR`
+                                                : '—'
+                                            const dateDisplay = nft.timestamp
+                                                ? new Date(Number(nft.timestamp) * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                                : '—'
+                                            return (
+                                                <div key={idx} className="border rounded-lg p-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <div className="text-sm font-medium">{nft.campaignTitle || `Campaign #${nft.campaignId.toString()}`}</div>
+                                                            <div className="text-xs text-gray-500 mt-1">{dateDisplay}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-sm font-semibold text-green-700">{amountDisplay} Donated</div>
+                                                            <a
+                                                                className="text-xs underline text-blue-600"
+                                                                href={hashScanUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                            >
+                                                                HashScan ↗
+                                                            </a>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <div className="text-xs text-gray-500">Txs: {o.txHashes?.length || 0}</div>
-                                                    {o.txHashes && o.txHashes[0] && (
-                                                        <a className="text-xs underline text-blue-600" href={`https://hashscan.io/testnet/transaction/${o.txHashes[0]}`} target="_blank" rel="noreferrer">View on HashScan</a>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div className="flex items-center justify-between mt-4">
-                                        <Button variant="secondary" onClick={() => setOrdersPage(Math.max(0, ordersPage - 1))} disabled={ordersPage === 0}>Previous</Button>
-                                        <span className="text-sm text-gray-600">Page {ordersPage + 1} of {Math.ceil(orders.length / 10)}</span>
-                                        <Button variant="secondary" onClick={() => setOrdersPage(Math.min(Math.ceil(orders.length / 10) - 1, ordersPage + 1))} disabled={ordersPage >= Math.ceil(orders.length / 10) - 1}>Next</Button>
-                                    </div>
+                                            )
+                                        })}
                                 </div>
                             )}
                         </div>
