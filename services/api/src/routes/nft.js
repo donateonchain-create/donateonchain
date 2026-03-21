@@ -28,7 +28,7 @@ function buildHederaClient() {
  * POST /api/nft/mint
  */
 router.post('/mint', async (req, res) => {
-  const { donorAddress, campaignId, txHash, amount } = req.body ?? {};
+  const { donorAddress, campaignId, txHash, amount, campaignTitle, campaignImage } = req.body ?? {};
 
   if (!donorAddress || !txHash) {
     return res.status(400).json({ error: 'Missing donorAddress or txHash' });
@@ -44,20 +44,59 @@ router.post('/mint', async (req, res) => {
   }
 
   try {
-    // Build the NFT metadata (IPFS or inline JSON)
-    const metadata = Buffer.from(JSON.stringify({
-      type: 'DonateOnChain Proof of Donation',
-      donor: donorAddress,
-      campaignId: String(campaignId ?? ''),
-      amount: String(amount ?? ''),
-      txHash,
-      timestamp: new Date().toISOString(),
-    }));
+    // Build HIP-412 standard metadata
+    const hip412Json = {
+      name: campaignTitle ? `Donation for ${campaignTitle}` : `DonateOnChain Proof of Donation`,
+      creator: 'DonateOnChain',
+      description: `Proof of donation on the DonateOnChain platform for Campaign #${campaignId}.`,
+      image: campaignImage || "ipfs://QmY...", // Fallback to a placeholder if none exists
+      type: "image/jpeg",
+      format: "HIP412@2.0.0",
+      properties: {
+        donor: donorAddress,
+        campaignId: String(campaignId ?? ''),
+        amount: String(amount ?? ''),
+        txHash,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    // Upload Metadata to IPFS via Pinata
+    const pinataJwt = process.env.PINATA_JWT;
+    const pinataUrl = process.env.PINATA_URL || 'https://api.pinata.cloud';
+    let metadataBuffer;
+
+    if (pinataJwt) {
+      const pinRes = await fetch(`${pinataUrl}/pinning/pinJSONToIPFS`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pinataJwt}`
+        },
+        body: JSON.stringify({
+           pinataContent: hip412Json,
+           pinataMetadata: { name: `DOC-POD-${txHash}` }
+        })
+      });
+
+      if (pinRes.ok) {
+        const pinData = await pinRes.json();
+        const cid = pinData.IpfsHash;
+        metadataBuffer = Buffer.from(`ipfs://${cid}`);
+      } else {
+        // Fallback to inline JSON if pinning fails
+        req.log.warn('Pinata upload failed, falling back to inline JSON');
+        metadataBuffer = Buffer.from(JSON.stringify(hip412Json));
+      }
+    } else {
+      // Fallback to inline JSON if no Pinata keys
+      metadataBuffer = Buffer.from(JSON.stringify(hip412Json));
+    }
 
     // Step 1: Mint a new serial number
     const mintTx = await new TokenMintTransaction()
       .setTokenId(nftTokenId)
-      .addMetadata(metadata)
+      .addMetadata(metadataBuffer)
       .setMaxTransactionFee(5_000_000) // 5 HBAR max gas
       .execute(client);
 

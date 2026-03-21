@@ -225,6 +225,8 @@ const CampaignDetails = () => {
                 campaignId: id!,
                 txHash: receipt.transactionHash,
                 amount: value,
+                campaignTitle: campaign.title,
+                campaignImage: campaign.image,
             }).catch((e) => {
                 if (import.meta.env.DEV) console.warn('NFT mint failed (non-critical):', e)
             })

@@ -209,18 +209,72 @@ export async function getProofNftAddress(): Promise<HexAddress | null> {
   }
 }
 
-export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{ tokenId: bigint; tokenURI?: string; image?: string }>> {
+export async function getUserProofNFTs(owner: HexAddress): Promise<Array<{
+  tokenId: bigint
+  campaignId: bigint
+  campaignTitle?: string
+  image?: string
+  amount?: bigint
+  timestamp?: bigint
+}>> {
   try {
     const donationIds = await read<bigint[]>({ address: CONTRACT, abi: ABI, functionName: 'getDonationsByDonor', args: [owner] })
-    const results: Array<{ tokenId: bigint; tokenURI?: string; image?: string }> = []
+    const results: Array<{
+      tokenId: bigint
+      campaignId: bigint
+      campaignTitle?: string
+      image?: string
+      amount?: bigint
+      timestamp?: bigint
+    }> = []
+
     for (const id of donationIds ?? []) {
-      results.push({ tokenId: id })
+      try {
+        // Fetch full donation struct to get campaignId and amount
+        const donation = await read<{ donor: string; campaignId: bigint; amount: bigint; timestamp: bigint; nftSerialNumber: bigint; refunded: boolean }>(
+          { address: CONTRACT, abi: ABI, functionName: 'getDonation', args: [id] }
+        )
+        let image: string | undefined
+        let campaignTitle: string | undefined
+        try {
+          // Fetch campaign to get image hash
+          const campaign = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [donation.campaignId] })
+          const imageHash = campaign?.imageHash as string | undefined
+          if (imageHash) {
+            image = imageHash.startsWith('http') ? imageHash : getIPFSURL(imageHash)
+          }
+          campaignTitle = campaign?.title as string | undefined
+          // Fallback: try to get metadata from IPFS
+          if (!image && campaign?.metadataFileHash) {
+            try {
+              const metaCid = await read<string>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignMetadataCid', args: [donation.campaignId] }).catch(() => undefined)
+              if (metaCid) {
+                const meta = await fetch(getIPFSURL(metaCid)).then(r => r.json()).catch(() => null)
+                if (meta?.image) image = meta.image
+                if (meta?.title) campaignTitle = meta.title
+              }
+            } catch { /* skip */ }
+          }
+        } catch { /* campaign fetch failed, continue without image */ }
+        results.push({
+          tokenId: id,
+          campaignId: donation.campaignId,
+          campaignTitle,
+          image,
+          amount: donation.amount,
+          timestamp: donation.timestamp,
+        })
+      } catch {
+        // Fall back to bare entry if donation fetch fails
+        results.push({ tokenId: id, campaignId: 0n })
+      }
     }
     return results
   } catch {
     return []
   }
 }
+
 
 export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<any[]> {
   try {

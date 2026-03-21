@@ -18,6 +18,8 @@ export async function mintDonationNFT(params: {
   campaignId: string | number
   txHash: string
   amount: number
+  campaignTitle?: string
+  campaignImage?: string
 }): Promise<MintNftResult> {
   return request<MintNftResult>(apiPath('/api/nft/mint'), {
     method: 'POST',

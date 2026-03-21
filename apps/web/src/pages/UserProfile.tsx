@@ -170,8 +170,8 @@ const UserProfile = () => {
     });
 
     const statistics = {
-        causesSupported: 0,
-        totalDonated: 0,
+        causesSupported: new Set(myNfts.map(n => n.campaignId.toString())).size,
+        totalDonated: myNfts.reduce((sum, nft) => sum + (Number(nft.amount || 0) / 1e18), 0),
         totalProfit: 0,
         totalDesigns: createdDesigns.length
     };
@@ -560,17 +560,37 @@ const UserProfile = () => {
                             ) : (
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                     {myNfts.map((nft, idx) => (
-                                        <div key={idx} className="border rounded-xl overflow-hidden bg-white">
+                                        <div
+                                            key={idx}
+                                            className="border rounded-xl overflow-hidden bg-white cursor-pointer hover:shadow-lg transition-shadow"
+                                            onClick={() => {
+                                                const tokenId = import.meta.env.VITE_NFT_TOKEN_ID || '0.0.8318134'
+                                                window.open(`https://hashscan.io/testnet/token/${tokenId}/${nft.tokenId.toString()}`, '_blank', 'noopener,noreferrer')
+                                            }}
+                                            title="View NFT on HashScan"
+                                        >
                                             {nft.image ? (
-                                                <img src={nft.image} alt={`NFT #${nft.tokenId.toString()}`} className="w-full h-48 object-cover" />
+                                                <img src={nft.image} alt={nft.campaignTitle || `NFT #${nft.tokenId.toString()}`} className="w-full h-48 object-cover" />
                                             ) : (
-                                                <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">No Image</div>
+                                                <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col items-center justify-center gap-2">
+                                                    <span className="text-4xl">🎫</span>
+                                                    <span className="text-xs text-gray-400">Proof of Donation</span>
+                                                </div>
                                             )}
                                             <div className="p-3">
-                                                <div className="text-sm font-medium text-black">NFT #{nft.tokenId.toString()}</div>
-                                                {nft.tokenURI && (
-                                                    <a className="text-xs text-blue-600 underline" href={(nft.tokenURI.startsWith('ipfs://') ? getIPFSURL(nft.tokenURI.replace('ipfs://','')) : nft.tokenURI)} target="_blank" rel="noreferrer">View Metadata</a>
-                                                )}
+                                                <div className="text-sm font-semibold text-black truncate">
+                                                    {nft.campaignTitle || `Donation #${nft.tokenId.toString()}`}
+                                                </div>
+                                                <div className="text-xs mt-1.5 flex flex-col gap-1">
+                                                    <div className="font-medium text-gray-800 flex items-center gap-1.5">
+                                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                                        {nft.amount ? `${(Number(nft.amount) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR Donated` : `Donated`}
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-gray-500">
+                                                        <span>{nft.timestamp ? new Date(Number(nft.timestamp) * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : `NFT #${nft.tokenId.toString()}`}</span>
+                                                        <span className="text-blue-600 font-medium tracking-wide">HashScan ↗</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
