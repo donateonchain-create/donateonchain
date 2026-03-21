@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useAccount } from 'wagmi'
+import { getStorageJson } from '../utils/safeStorage'
 import { saveCart, getCart } from '../utils/storageApi'
 
 interface CartItem {
@@ -43,109 +45,50 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     const [currentWallet, setCurrentWallet] = useState<string | null>(null)
     const { address, isConnected } = useAccount()
 
-    useEffect(() => {
-        const loadCart = async () => {
+    useQuery({
+        queryKey: ['cartInit', address, isConnected],
+        queryFn: async () => {
+            let loadedCart: CartItem[] = [];
+            let w = address || null;
             if (isConnected && address) {
-               
-                if (currentWallet && currentWallet !== address) {
-                    setCartItems([])
-                    setCurrentWallet(address)
-                    return
-                }
-                
-             
                 try {
-                    const storedCart = await getCart(address)
+                    const storedCart = await getCart(address);
                     if (storedCart && storedCart.length > 0) {
-                        const migratedCart = storedCart.map((item: any) => {
-                            if (!item.uniqueId) {
-                                return {
-                                    ...item,
-                                    uniqueId: `${item.id}-${item.size}-${item.color}`
-                                }
-                            }
-                            return item
-                        })
-                        setCartItems(migratedCart)
-                        setCurrentWallet(address)
-                        return
+                        loadedCart = storedCart.map((item: any) => ({
+                            ...item,
+                            uniqueId: item.uniqueId || `${item.id}-${item.size}-${item.color}`
+                        }));
                     }
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error loading cart from Firebase:', error)
-                    }
+                } catch {
+                    const parsedCart = getStorageJson<any[]>(`cart_${address}`, []);
+                    if (parsedCart.length > 0) Object.assign(loadedCart, parsedCart.map((item: any) => ({
+                        ...item, uniqueId: item.uniqueId || `${item.id}-${item.size}-${item.color}`
+                    })));
                 }
-                
-             
-                const savedCart = localStorage.getItem(`cart_${address}`)
-                if (savedCart) {
-                    try {
-                        const parsedCart = JSON.parse(savedCart)
-                        const migratedCart = parsedCart.map((item: any) => {
-                            if (!item.uniqueId) {
-                                return {
-                                    ...item,
-                                    uniqueId: `${item.id}-${item.size}-${item.color}`
-                                }
-                            }
-                            return item
-                        })
-                        setCartItems(migratedCart)
-                        setCurrentWallet(address)
-                    } catch (error) {
-                        if (import.meta.env.DEV) {
-                            // eslint-disable-next-line no-console
-                            console.error('Error loading cart from localStorage:', error)
-                        }
-                    }
-                } else {
-                    setCurrentWallet(address)
-                }
-            } else if (!isConnected) {
-               
-                if (currentWallet) {
-                    const savedCart = localStorage.getItem(`cart_${currentWallet}`)
-                    if (savedCart) {
-                        try {
-                            const parsedCart = JSON.parse(savedCart)
-                            setCartItems(parsedCart)
-                        } catch (error) {
-                            if (import.meta.env.DEV) {
-                                // eslint-disable-next-line no-console
-                                console.error('Error loading cart from localStorage:', error)
-                            }
-                        }
-                    }
-                }
+            } else if (!isConnected && currentWallet) {
+                const parsedCart = getStorageJson<any[]>(`cart_${currentWallet}`, []);
+                if (parsedCart.length > 0) Object.assign(loadedCart, parsedCart.map((item: any) => ({
+                    ...item, uniqueId: item.uniqueId || `${item.id}-${item.size}-${item.color}`
+                })));
             }
+            if (loadedCart.length > 0 || (currentWallet && currentWallet !== address)) {
+                setCartItems(loadedCart);
+                setCurrentWallet(w as any);
+            }
+            return loadedCart;
         }
-        
-        loadCart()
-    }, [address, isConnected, currentWallet])
+    });
 
-    useEffect(() => {
-        const saveToStorage = async () => {
-            if (address) {
-                localStorage.setItem(`cart_${address}`, JSON.stringify(cartItems))
-            } else {
-                localStorage.setItem('cart', JSON.stringify(cartItems))
-            }
-            
-            if (isConnected && address) {
-                try {
-                    await saveCart(address, cartItems)
-                } catch (error) {
-                    if (import.meta.env.DEV) {
-                        // eslint-disable-next-line no-console
-                        console.error('Error saving cart to Firebase:', error)
-                    }
-                }
-            }
+    const triggerSave = (newItems: CartItem[]) => {
+        if (address) {
+            localStorage.setItem(`cart_${address}`, JSON.stringify(newItems));
+            saveCart(address, newItems).catch(() => {});
+        } else {
+            localStorage.setItem('cart', JSON.stringify(newItems));
         }
-        
-        saveToStorage()
-    }, [cartItems, address, isConnected])
+    };
+
+
 
     const addToCart = (productId: number, size: string, color: string, maxQuantity?: number) => {
         const uniqueId = `${productId}-${size}-${color}`
@@ -171,6 +114,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                     ...currentItem,
                     quantity: newQuantity
                 }
+                triggerSave(updatedItems);
                 return updatedItems
             } else {
                 const newItem = { 
@@ -181,7 +125,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                     uniqueId,
                     maxQuantity
                 }
-                return [...prevItems, newItem]
+                const newArr = [...prevItems, newItem];
+                triggerSave(newArr);
+                return newArr;
             }
         })
     }
@@ -192,8 +138,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
             return
         }
         
-        setCartItems(items => 
-            items.map(item => {
+        setCartItems(items => {
+            const newItems = items.map(item => {
                 if (item.uniqueId === uniqueId) {
                     if (item.maxQuantity && newQuantity > item.maxQuantity) {
                         if (import.meta.env.DEV) {
@@ -205,16 +151,20 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
                     return { ...item, quantity: newQuantity }
                 }
                 return item
-            })
-        )
+            });
+            triggerSave(newItems);
+            return newItems;
+        })
     }
 
     const removeItem = (uniqueId: string) => {
-        setCartItems(items => items.filter(item => item.uniqueId !== uniqueId))
+        setCartItems(items => { const newItems = items.filter(item => item.uniqueId !== uniqueId); triggerSave(newItems); return newItems; })
     }
 
     const clearCart = () => {
-        setCartItems([])
+        const newItems: CartItem[] = [];
+        setCartItems(newItems);
+        triggerSave(newItems);
     }
 
     const getCartItemCount = () => {

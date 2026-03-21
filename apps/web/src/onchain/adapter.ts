@@ -1,6 +1,7 @@
 import { abis, addresses, roles } from './contracts'
 import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
+import { getIPFSURL } from '../utils/ipfs'
 import { keccak256, stringToHex, decodeEventLog } from 'viem'
 
 const CONTRACT = addresses.DONATE_ON_CHAIN as HexAddress
@@ -9,7 +10,8 @@ const ABI = abis.DonateOnChain as any
 const CampaignState = { Pending_Vetting: 0, Active: 1, Goal_Reached: 2, Failed_Refundable: 3, Closed: 4 } as const
 
 function toWei(hbar: number) {
-  return BigInt(Math.floor(hbar * 1e18))
+  // Hedera EVM uses weibars (18 decimals) matching Ethereum — relay converts to tinybars internally
+  return BigInt(Math.round(hbar * 1e18))
 }
 
 export { toWei }
@@ -68,7 +70,7 @@ export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number;
   for (const id of ids) {
     try {
       const c = await getCampaign(id)
-      const image = c.image ? (c.image.startsWith('ipfs://') ? `https://cloudflare-ipfs.com/ipfs/${c.image.replace('ipfs://', '')}` : c.image) : undefined
+      const image = c.image ? (c.image.startsWith('ipfs://') ? getIPFSURL(c.image.replace('ipfs://', '')) : c.image) : undefined
       results.push({ id: Number(id), title: c.title, description: c.description, image, onchainId: id })
     } catch {
       results.push({ id: Number(id), title: '', description: '', onchainId: id })
@@ -95,10 +97,10 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = Number(chainCampaign.goalHBAR)
+        let target = Number(chainCampaign.goalHBAR) / 1e18 // convert weibars → HBAR
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
-          image = `https://cloudflare-ipfs.com/ipfs/${chainCampaign.image}`
+          image = getIPFSURL(chainCampaign.image)
         }
 
         campaigns.push({
@@ -135,6 +137,64 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.error('Error listing active campaigns from chain:', error)
+    }
+    return []
+  }
+}
+
+export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
+  try {
+    const ids = await read<bigint[]>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignsByNGO', args: [ngoAddress] })
+    if (!ids || ids.length === 0) return [];
+
+    const campaigns: any[] = []
+    for (const id of ids) {
+      try {
+        const chainCampaign = await getCampaign(id)
+        let amountRaised = 0
+        try {
+          const donations = await getDonationsByCampaign(id)
+          amountRaised = donations.totalRaisedHBAR
+        } catch { }
+
+        let title = chainCampaign.title || ''
+        let description = chainCampaign.description || ''
+        let category: string | undefined
+        let image: string | undefined = chainCampaign.image
+        let target = Number(chainCampaign.goalHBAR) / 1e18 // convert weibars → HBAR
+
+        if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
+          image = getIPFSURL(chainCampaign.image)
+        }
+
+        campaigns.push({
+          id: Number(id),
+          onchainId: Number(id),
+          title,
+          description,
+          category,
+          target,
+          amountRaised,
+          percentage: target > 0 ? (amountRaised / target) * 100 : 0,
+          ngoWallet: chainCampaign.ngo,
+          designer: chainCampaign.designer,
+          image,
+          active: chainCampaign.active ?? true,
+          createdAt: Date.now(),
+        })
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.warn(`Failed to load NGO campaign ${id}:`, e)
+        }
+        continue
+      }
+    }
+    return campaigns
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('Error listing campaigns by NGO from chain:', error)
     }
     return []
   }
@@ -195,7 +255,7 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
             id: Number(onchainId),
             onchainId: Number(onchainId),
             amountRaised: donations.totalRaisedHBAR,
-            goal: Number(chainCampaign.goalHBAR) / 1e18,
+            goal: Number(chainCampaign.goalHBAR) / 1e18, // convert weibars → HBAR
             active: chainCampaign.active ?? true,
             ngoWallet: chainCampaign.ngo,
           })
@@ -219,11 +279,11 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
 
 export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean }> {
   const c = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [id] })
-  const state = typeof c?.state === 'number' ? c.state : c?.[10] ?? 0
+  const state = typeof c?.state === 'number' ? c.state : c?.[11] ?? 0
   const active = state === CampaignState.Active
   let image = c?.imageHash ?? c?.[4]
   if (image && (String(image).startsWith('Qm') || String(image).startsWith('baf'))) {
-    image = `https://cloudflare-ipfs.com/ipfs/${image}`
+    image = getIPFSURL(String(image))
   }
   return {
     id: BigInt(id),
@@ -452,7 +512,7 @@ export async function getDonationsByCampaign(campaignId: bigint) {
     amounts,
     timestamps,
     nftSerialNumbers,
-    totalRaisedHBAR: Number(totalRaised) / 1e18,
+    totalRaisedHBAR: Number(totalRaised) / 1e18, // weibars → HBAR
     count: donors.length,
   }
 }
@@ -485,8 +545,24 @@ export async function createDesign(_params: {
   throw new Error('Design marketplace is not available in the new contract.')
 }
 
-export async function updateCampaignOnChain(_campaignId: bigint, _title: string, _description: string, _imageHash: string): Promise<never> {
-  throw new Error('Campaign updates are not supported in the new contract.')
+export async function updateCampaignOnChain(campaignId: bigint, title: string, description: string, imageHash: string, targetHBAR: number) {
+  try {
+    console.log(`Updating campaign ${campaignId} on chain with target ${targetHBAR} HBAR...`);
+    const targetWei = toWei(targetHBAR)
+    const hash = await write({
+      address: CONTRACT,
+      abi: ABI,
+      functionName: 'updateCampaign',
+      args: [campaignId, title, description, imageHash, '0x0000000000000000000000000000000000000000000000000000000000000000', targetWei],
+    })
+    console.log(`Campaign ${campaignId} update tx sent: ${hash}. Waiting for receipt...`);
+    const receipt = await wait(hash)
+    console.log(`Campaign ${campaignId} update successful!`);
+    return receipt;
+  } catch (error) {
+    console.error(`Failed to update campaign ${campaignId} on chain:`, error);
+    throw error;
+  }
 }
 
 export async function adminAddAdmin(admin: HexAddress) {

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
@@ -8,6 +9,8 @@ import ProductCard from '../component/ProductCard'
 import { products } from '../data/databank'
 import { ChevronDown, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { getIPFSURL } from '../utils/ipfs'
+import { getStorageJson } from '../utils/safeStorage'
 import { getUserDesigns, getNGODesigns, getAllGlobalDesigns, getDesignIndex } from '../utils/storageApi'
 import { getDesignById, getDesignPrice } from '../onchain/adapter'
 import { SkeletonProductDetail, SkeletonCard } from '../component/Skeleton'
@@ -16,97 +19,76 @@ const ProductPage = () => {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
     const { address, isConnected } = useAccount()
-    const [selectedSize, setSelectedSize] = useState<string>('')
+        const [selectedSize, setSelectedSize] = useState<string>('')
     const [selectedQuantity, setSelectedQuantity] = useState<number>(1)
-    const [availableQuantity, setAvailableQuantity] = useState<number>(Infinity)
     const [openAccordion, setOpenAccordion] = useState<string | null>(null)
     const [showSuccessMessage, setShowSuccessMessage] = useState<boolean>(false)
     const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
-    const [customDesign, setCustomDesign] = useState<any>(null)
     const [currentImageView, setCurrentImageView] = useState<'front' | 'back'>('front')
-    const [isMyDesign, setIsMyDesign] = useState(false)
-    const [profileName, setProfileName] = useState<string>('')
-    const [isLoading, setIsLoading] = useState(true)
     const { addToCart } = useCart()
 
-    useEffect(() => {
-        const loadFromOnchain = async () => {
-            if (!id) return
+    const { data: customDesign, isLoading } = useQuery({
+        queryKey: ['product', id, address, isConnected],
+        queryFn: async () => {
+            if (!id) return null
             try {
                 const onchain = await getDesignById(BigInt(id))
-                if (!onchain) return
-                let price = Number(onchain.priceHBAR) / 1e18
-                try { const p = await getDesignPrice(BigInt(id)); price = Number(p) / 1e18 } catch {}
-                const index = await getDesignIndex(id.toString())
-                let meta: any = null
-                if (index?.metadataCid) {
-                    const url = `https://ipfs.io/ipfs/${index.metadataCid}`
-                    try { meta = await fetch(url).then(r => r.json()) } catch {}
+                if (onchain) {
+                    let price = Number(onchain.priceHBAR) / 1e18
+                    try { const p = await getDesignPrice(BigInt(id)); price = Number(p) / 1e18 } catch {}
+                    const index = await getDesignIndex(id.toString())
+                    let meta: any = null
+                    if (index?.metadataCid) {
+                        const url = getIPFSURL(index.metadataCid)
+                        try { meta = await fetch(url).then(r => r.json()) } catch {}
+                    }
+                    return {
+                        id: Number(id),
+                        pieceName: meta?.name || onchain.title,
+                        description: meta?.description || '',
+                        price: `${price}`,
+                        campaign: Number(onchain.campaignId),
+                        color: '#FFFFFF',
+                        sizes: ['XS','S','M','L','XL','XXL'],
+                        frontDesign: index?.previewCid ? { url: getIPFSURL(index.previewCid) } : null,
+                        backDesign: null,
+                        walletAddress: onchain.designer,
+                        isNgo: false,
+                        quantity: 9999
+                    }
                 }
-                const assembled = {
-                    id: Number(id),
-                    pieceName: meta?.name || onchain.title,
-                    description: meta?.description || '',
-                    price: `${price}`,
-                    campaign: Number(onchain.campaignId),
-                    color: '#FFFFFF',
-                    sizes: ['XS','S','M','L','XL','XXL'],
-                    frontDesign: index?.previewCid ? { url: `https://ipfs.io/ipfs/${index.previewCid}` } : null,
-                    backDesign: null,
-                    walletAddress: onchain.designer,
-                    isNgo: false
-                }
-                setCustomDesign(assembled)
-                setAvailableQuantity(9999)
-                setIsLoading(false)
             } catch {}
-        }
-        const loadDesign = async () => {
-            if (!id) { setIsLoading(false); return }
-            setIsLoading(true)
-            await loadFromOnchain()
-            const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]')
-            const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]')
+
+            const userDesigns = getStorageJson<any[]>('userDesigns', [])
+            const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
             const allDesigns = [...userDesigns, ...ngoDesigns]
             const foundDesign = allDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-            if (foundDesign) { setCustomDesign(foundDesign); const qty = foundDesign.quantity || foundDesign.maxQuantity || 0; setAvailableQuantity(qty); setIsLoading(false); return }
+            if (foundDesign) return foundDesign
+
             try {
-                const allFirebaseDesigns = await getAllGlobalDesigns()
-                const foundFirebaseDesign = allFirebaseDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                if (foundFirebaseDesign) { setCustomDesign(foundFirebaseDesign); setIsLoading(false); return }
+                const allGlobalDesigns = await getAllGlobalDesigns()
+                const foundGlobalDesign = allGlobalDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
+                if (foundGlobalDesign) return foundGlobalDesign
+
                 if (address && isConnected) {
-                    const userDesignsFirebase = await getUserDesigns(address)
-                    const ngoDesignsFirebase = await getNGODesigns(address)
-                    const allOwnDesigns = [...userDesignsFirebase, ...ngoDesignsFirebase]
+                    const userDesignsList = await getUserDesigns(address)
+                    const ngoDesignsList = await getNGODesigns(address)
+                    const allOwnDesigns = [...userDesignsList, ...ngoDesignsList]
                     const foundOwnDesign = allOwnDesigns.find((design: any) => design.id?.toString() === id?.toString() || design.id === parseInt(id))
-                    if (foundOwnDesign) { setCustomDesign(foundOwnDesign) }
+                    if (foundOwnDesign) return foundOwnDesign
                 }
             } catch {}
-            setIsLoading(false)
+            return null
         }
-        loadDesign()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [id])
-   
-    useEffect(() => {
-        const loadCreatorName = async () => {
-            if (customDesign && customDesign.walletAddress) {
-                setProfileName(customDesign.isNgo ? 'An NGO' : 'A Designer')
-            }
-        }
-        loadCreatorName()
-    }, [customDesign])
-   
-    useEffect(() => {
-        if (customDesign && isConnected && address) {
-            const isOwner = customDesign.walletAddress?.toLowerCase() === address.toLowerCase() || customDesign.connectedWalletAddress?.toLowerCase() === address.toLowerCase()
-            setIsMyDesign(isOwner)
-        } else if (customDesign && !isConnected) {
-            setIsMyDesign(false)
-        }
-    }, [customDesign, isConnected, address])
-   
+    })
+
+    const profileName = customDesign?.walletAddress ? (customDesign.isNgo ? 'An NGO' : 'A Designer') : ''
+    const isMyDesign = customDesign && isConnected && address ? 
+        (customDesign.walletAddress?.toLowerCase() === address.toLowerCase() || customDesign.connectedWalletAddress?.toLowerCase() === address.toLowerCase()) 
+        : false
+    const availableQuantity = customDesign ? (customDesign.quantity ?? customDesign.maxQuantity ?? 9999) : Infinity
     const product = customDesign || products.find(p => p.id === parseInt(id || '1'))
+    const maxAvailable = customDesign ? availableQuantity : (product as any)?.stock ?? Infinity
 
     if (!product) {
         return (
@@ -127,14 +109,21 @@ const ProductPage = () => {
 
     const handleAddToCart = () => {
         if (product) {
+            const limit = customDesign ? (customDesign.quantity || customDesign.maxQuantity || maxAvailable) : maxAvailable
+            const safeQuantity = Math.min(selectedQuantity, limit)
+
             if (customDesign && isConnected && isMyDesign) {
-                const maxQuantity = customDesign.quantity || customDesign.maxQuantity
+                const maxQuantity = limit
                 customDesign.sizes.forEach((size: string) => {
-                    for (let i = 0; i < selectedQuantity; i++) { addToCart(customDesign.id, size, customDesign.color, maxQuantity) }
+                    for (let i = 0; i < safeQuantity; i++) {
+                        addToCart(customDesign.id, size, customDesign.color, maxQuantity)
+                    }
                 })
             } else if (selectedSize) {
-                const maxQuantity = customDesign ? (customDesign.quantity || customDesign.maxQuantity) : undefined
-                for (let i = 0; i < selectedQuantity; i++) { addToCart(product.id, selectedSize, (product as any).color, maxQuantity) }
+                const maxQuantity = limit
+                for (let i = 0; i < safeQuantity; i++) {
+                    addToCart(product.id, selectedSize, (product as any).color, maxQuantity)
+                }
             }
             setShowSuccessMessage(true)
             setTimeout(() => { setShowSuccessMessage(false) }, 3000)
@@ -145,7 +134,7 @@ const ProductPage = () => {
     const handleConfirmDelete = () => {
         if (customDesign) {
             const storageKey = customDesign.isNgo ? 'ngoDesigns' : 'userDesigns'
-            const existingDesigns = JSON.parse(localStorage.getItem(storageKey) || '[]')
+            const existingDesigns = getStorageJson<any[]>(storageKey, [])
             const updatedDesigns = existingDesigns.filter((design: any) => design.id !== customDesign.id)
             localStorage.setItem(storageKey, JSON.stringify(updatedDesigns))
             const redirectPath = customDesign.isNgo ? '/ngo-profile' : '/user-profile'
@@ -260,19 +249,55 @@ const ProductPage = () => {
                                 </div>
                             </div>
                             <div className="mb-8">
-                                        <label className="block text-sm font-medium text-black mb-3">Quantity {customDesign && `(${availableQuantity} available)`}</label>
-                                        {customDesign && selectedQuantity > availableQuantity && (<p className="text-red-500 text-sm mb-2">Cannot select more than {availableQuantity} items</p>)}
+                                <label className="block text-sm font-medium text-black mb-3">
+                                    Quantity {(maxAvailable !== Infinity) && `(${maxAvailable} available)`}
+                                </label>
+                                {maxAvailable !== Infinity && selectedQuantity > maxAvailable && (
+                                    <p className="text-red-500 text-sm mb-2">
+                                        Cannot select more than {maxAvailable} items
+                                    </p>
+                                )}
                                 <div className="flex items-center gap-3">
-                                            <button onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))} className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-black hover:bg-gray-300 transition-colors"><span className="text-base">-</span></button>
-                                            <input type="number" value={Math.min(selectedQuantity, customDesign ? availableQuantity : Infinity)} onChange={(e) => { const newQty = Math.max(1, parseInt(e.target.value) || 1); const maxAllowed = customDesign ? availableQuantity : Infinity; setSelectedQuantity(Math.min(newQty, maxAllowed)) }} className="w-16 h-10 border border-gray-300 rounded text-center text-sm" min="1" max={customDesign ? availableQuantity : undefined} />
-                                            {customDesign && selectedQuantity > availableQuantity && (<span className="text-red-500 text-xs">Max: {availableQuantity}</span>)}
-                                            <button onClick={() => { const maxAllowed = customDesign ? availableQuantity : Infinity; setSelectedQuantity(Math.min(selectedQuantity + 1, maxAllowed)) }} className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={customDesign && selectedQuantity >= availableQuantity}><span className="text-base">+</span></button>
-                                    </div>
+                                    <button
+                                        onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                                        className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-black hover:bg-gray-300 transition-colors"
+                                    >
+                                        <span className="text-base">-</span>
+                                    </button>
+                                    <input
+                                        type="number"
+                                        value={Math.min(selectedQuantity, maxAvailable)}
+                                        onChange={(e) => {
+                                            const raw = parseInt(e.target.value) || 1
+                                            const clamped = Math.max(1, Math.min(raw, maxAvailable))
+                                            setSelectedQuantity(clamped)
+                                        }}
+                                        className="w-16 h-10 border border-gray-300 rounded text-center text-sm"
+                                        min="1"
+                                        max={maxAvailable !== Infinity ? maxAvailable : undefined}
+                                    />
+                                    {maxAvailable !== Infinity && selectedQuantity > maxAvailable && (
+                                        <span className="text-red-500 text-xs">Max: {maxAvailable}</span>
+                                    )}
+                                    <button
+                                        onClick={() => setSelectedQuantity(Math.min(selectedQuantity + 1, maxAvailable))}
+                                        className="w-10 h-10 rounded-full bg-black flex items-center justify-center text-white hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={maxAvailable !== Infinity && selectedQuantity >= maxAvailable}
+                                    >
+                                        <span className="text-base">+</span>
+                                    </button>
                                 </div>
-                                    {customDesign && availableQuantity <= 0 ? (
+                            </div>
+                                    {maxAvailable !== Infinity && maxAvailable <= 0 ? (
                                         <button className="w-full bg-gray-500 text-white py-4 px-6 rounded-lg font-semibold text-lg mb-8 cursor-not-allowed" disabled>Sold Out</button>
                                     ) : (
-                                        <button onClick={handleAddToCart} className="w-full bg-black text-white py-4 px-6 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-colors mb-8 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled={!selectedSize || (customDesign && selectedQuantity > availableQuantity)}>Add to cart</button>
+                                        <button
+                                            onClick={handleAddToCart}
+                                            className="w-full bg-black text-white py-4 px-6 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-colors mb-8 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                            disabled={!selectedSize || (maxAvailable !== Infinity && selectedQuantity > maxAvailable)}
+                                        >
+                                            Add to cart
+                                        </button>
                                     )}
                                 </>
                             )}

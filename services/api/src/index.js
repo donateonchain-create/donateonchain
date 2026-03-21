@@ -11,6 +11,14 @@ import pinoHttp from 'pino-http'
 import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 
+import authRoutes from './routes/auth.js'
+import ngoRoutes from './routes/ngo.js'
+import kvRoutes from './routes/kv.js'
+import waitlistRoutes from './routes/waitlist.js'
+import designIndexRoutes from './routes/designIndex.js'
+import kycAdminRoutes from './routes/kycAdmin.js'
+import nftRoutes from './routes/nft.js'
+
 const prisma = new PrismaClient()
 
 const app = express()
@@ -1606,6 +1614,12 @@ app.delete('/api/ipfs/unpin/:cid', async (req, res) => {
     res.status(500).json({ error: 'unpin_failed' })
   }
 })
+
+// --- Mounted route modules (auth, NGO applications, etc.) ---
+app.use('/api', authRoutes)
+app.use('/api', ngoRoutes)
+app.use('/api', kycAdminRoutes)
+app.use('/api/nft', nftRoutes)
 
 app.use((err, req, res, _next) => {
   req.log?.error(err, 'unhandled_error')

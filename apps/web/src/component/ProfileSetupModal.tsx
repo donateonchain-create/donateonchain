@@ -1,5 +1,5 @@
 import { X, Camera } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Button from './Button'
 import { useAccount } from 'wagmi'
 import { saveUserProfileWithImages } from '../utils/storageApi'
@@ -16,21 +16,13 @@ interface ProfileSetupModalProps {
 }
 
 const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupModalProps) => {
-    const [formData, setFormData] = useState({ name: '', bio: '' })
-    const [profileImage, setProfileImage] = useState<string | null>(null)
-    const [bannerImage, setBannerImage] = useState<string | null>(null)
+    const [formData, setFormData] = useState({ 
+        name: existingProfile?.name || '', 
+        bio: existingProfile?.bio || '' 
+    })
+    const [profileImage, setProfileImage] = useState<string | null>(existingProfile?.profileImage || null)
+    const [bannerImage, setBannerImage] = useState<string | null>(existingProfile?.bannerImage || null)
     const { address, isConnected } = useAccount()
-
-    useEffect(() => {
-        if (existingProfile) {
-            setFormData({
-                name: existingProfile.name || '',
-                bio: existingProfile.bio || ''
-            })
-            setProfileImage(existingProfile.profileImage || null)
-            setBannerImage(existingProfile.bannerImage || null)
-        }
-    }, [existingProfile, isOpen])
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -123,12 +115,12 @@ const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupMod
                 await saveUserProfileWithImages(address, profileData)
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.log('Profile saved to Firebase')
+                    console.log('Profile saved to API')
                 }
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error saving profile to Firebase:', error)
+                    console.error('Error saving profile to API:', error)
                 }
             }
         }

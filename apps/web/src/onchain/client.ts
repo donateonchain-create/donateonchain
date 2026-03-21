@@ -11,8 +11,10 @@ export async function simulate({ address, abi, functionName, args, value }: { ad
 }
 
 export async function write({ address, abi, functionName, args, value }: { address: `0x${string}`; abi: Abi; functionName: string; args?: any[]; value?: bigint }) {
-  const { request } = await simulate({ address, abi, functionName, args, value })
-  const hash = await writeContract(wagmiConfig, request)
+  // Skip simulateContract on Hedera — the WalletConnect connector path fails with
+  // "connection.connector.getChainId is not a function" during simulation.
+  // We write directly; the contract itself will revert with a meaningful error if invalid.
+  const hash = await writeContract(wagmiConfig, { address, abi, functionName, args, value } as any)
   return hash
 }
 

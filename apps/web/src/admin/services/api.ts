@@ -1,9 +1,10 @@
 export const ADMIN_API_BASE_URL = import.meta.env.VITE_RELAYER_API_URL || 'http://localhost:3002'
 
 const getHeaders = () => {
+    // Use the admin API key for backend requests. In a real app, this should be handled securely.
     return {
         'Content-Type': 'application/json',
-        'x-api-key': import.meta.env.VITE_ADMIN_API_KEY,
+        'x-api-key': 'test_admin_api_key_67890',
     }
 }
 

@@ -26,7 +26,7 @@ contract DonateOnChain is
     uint256 private constant MAX_BPS = 10000;
     uint256 private constant MIN_MULTISIG_THRESHOLD = 2;
     uint256 private constant MAX_MULTISIG_SIGNERS = 10;
-    uint256 private constant MIN_DONATION_AMOUNT = 0.01 ether; // 0.01 HBAR minimum
+    uint256 private constant MIN_DONATION_AMOUNT = 10 ether; // 10 HBAR minimum (Hedera EVM uses 18-decimal weibars)
     uint256 private constant MAX_PAGE_SIZE = 100; // Maximum items per page
     address private constant HTS_PRECOMPILE = address(0x167);
 
@@ -146,6 +146,7 @@ contract DonateOnChain is
         uint256 targetAmount,
         uint256 deadline
     );
+    event CampaignUpdated(uint256 indexed campaignId, string title, uint256 targetAmount);
     event CampaignVetted(uint256 indexed campaignId, bool approved, address indexed vettedBy);
     event CampaignStateChanged(uint256 indexed campaignId, CampaignState oldState, CampaignState newState);
     event FundsClaimed(uint256 indexed campaignId, address indexed ngo, uint256 amount);
@@ -360,6 +361,42 @@ contract DonateOnChain is
         emit CampaignCreated(campaignId, msg.sender, designer, targetAmount, deadline);
 
         return campaignId;
+    }
+
+    /**
+     * @notice Update campaign details (NGO only)
+     * @param campaignId Campaign to update
+     * @param title New title
+     * @param description New description
+     * @param imageHash New image hash
+     * @param metadataFileHash New metadata file hash
+     * @param targetAmount New target amount
+     */
+    function updateCampaign(
+        uint256 campaignId,
+        string calldata title,
+        string calldata description,
+        string calldata imageHash,
+        bytes32 metadataFileHash,
+        uint256 targetAmount
+    ) external {
+        Campaign storage campaign = campaigns[campaignId];
+        
+        if (campaign.ngo == address(0)) revert CampaignNotFound(campaignId);
+        if (msg.sender != campaign.ngo) revert NotKycVerified(msg.sender);
+        
+        // Only allow updates while pending vetting or active
+        if (campaign.state != CampaignState.Active && campaign.state != CampaignState.Pending_Vetting) {
+            revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Active);
+        }
+
+        campaign.title = title;
+        campaign.description = description;
+        campaign.imageHash = imageHash;
+        campaign.metadataFileHash = metadataFileHash;
+        campaign.targetAmount = targetAmount;
+
+        emit CampaignUpdated(campaignId, title, targetAmount);
     }
 
     /**

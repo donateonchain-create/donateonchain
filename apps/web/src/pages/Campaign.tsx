@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -36,7 +37,46 @@ const Campaign = () => {
     const [activeCategory, setActiveCategory] = useState('all')
     const [filteredCampaigns, setFilteredCampaigns] = useState<any[]>([])
     const [allCampaigns, setAllCampaigns] = useState<any[]>([])
-    const [isLoading, setIsLoading] = useState(true)
+
+    const { isLoading } = useQuery({
+        queryKey: ['campaigns_all'],
+        queryFn: async () => {
+            try {
+                const cacheKey = 'campaigns_all'
+                const cached = getCache(cacheKey)
+                if (cached) {
+                    setAllCampaigns(cached)
+                    setFilteredCampaigns(cached)
+                    return cached
+                }
+                const [onchain, apiResult] = await Promise.all([
+                    listAllCampaignsFromChain(),
+                    getCampaigns({ limit: 200 }).catch(() => ({ items: [] })),
+                ])
+                const backendById = new Map(apiResult.items.map((c: any) => [c.id, c]))
+                const withPercent = onchain.map((c: any) => {
+                    const backend = backendById.get(String(c.onchainId ?? c.id)) as any
+                    const target = Number(c.target) || (backend ? Number(backend.targetAmount) : 0) || 0
+                    const raised = backend
+                        ? Number(backend.raisedAmount ?? 0)
+                        : Number(c.amountRaised) || 0
+                    const percentage = target > 0 ? (raised / target) * 100 : 0
+                    const category = (c.category || '')
+                        .toString()
+                        .trim()
+                        .toLowerCase()
+                        .replace(/\s+/g, '-')
+                    return { ...c, category, target, amountRaised: raised, percentage }
+                })
+                setAllCampaigns(withPercent)
+                setFilteredCampaigns(withPercent)
+                setCache(cacheKey, withPercent)
+                return withPercent
+            } catch (error) {
+                return []
+            }
+        }
+    })
 
     const getCategoryDisplayName = (category: string) => {
         switch (category) {
@@ -55,49 +95,7 @@ const Campaign = () => {
         { value: 'climate-change', label: "Climate Change" }
     ]
   
-    useEffect(() => {
-        const loadCampaigns = async () => {
-            try {
-                const cacheKey = 'campaigns_all'
-                const cached = getCache(cacheKey)
-                if (cached) {
-                    setAllCampaigns(cached)
-                    setFilteredCampaigns(cached)
-                    setIsLoading(false)
-                }
-                const [onchain, apiResult] = await Promise.all([
-                    listAllCampaignsFromChain(),
-                    getCampaigns({ limit: 200 }).catch(() => ({ items: [] })),
-                ])
-                const backendById = new Map(apiResult.items.map((c) => [c.id, c]))
-                const withPercent = onchain.map((c) => {
-                    const backend = backendById.get(String(c.onchainId ?? c.id))
-                    const target = Number(c.target) || (backend ? Number(backend.targetAmount) : 0) || 0
-                    const raised = backend
-                        ? Number(backend.raisedAmount ?? 0)
-                        : Number(c.amountRaised) || 0
-                    const percentage = target > 0 ? (raised / target) * 100 : 0
-                    const category = (c.category || '')
-                        .toString()
-                        .trim()
-                        .toLowerCase()
-                        .replace(/\s+/g, '-')
-                    return { ...c, category, target, amountRaised: raised, percentage }
-                })
-                setAllCampaigns(withPercent)
-                setFilteredCampaigns(withPercent)
-                setCache(cacheKey, withPercent)
-                setIsLoading(false)
-            } catch (error) {
-                if (import.meta.env.DEV) {
-                    // eslint-disable-next-line no-console
-                    console.error('Error loading campaigns:', error)
-                }
-                setIsLoading(false)
-            }
-        }
-        loadCampaigns()
-    }, [])
+
  
     const handleCategoryClick = (category: string) => {
         setActiveCategory(category)

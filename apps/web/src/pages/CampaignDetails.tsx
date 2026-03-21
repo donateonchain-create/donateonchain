@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
@@ -10,9 +11,8 @@ import EditCampaignModal from '../component/EditCampaignModal'
 import { Loader2, Check, Gift, Trash } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
 import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
-import { uploadFileToIPFS } from '../utils/ipfs'
-import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation } from '../api'
-import type { DonationEventApi } from '../types/api'
+import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
+import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation, mintDonationNFT } from '../api'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -38,33 +38,25 @@ const CampaignDetails = () => {
     const navigate = useNavigate()
     const { address, isConnected } = useAccount()
     const [donationAmount, setDonationAmount] = useState<string>('')
-    const [campaign, setCampaign] = useState<any>(null)
-    const [allCampaigns, setAllCampaigns] = useState<any[]>([])
-    const [isLoading, setIsLoading] = useState(true)
-    const [isCampaignCreator, setIsCampaignCreator] = useState(false)
+    const [isDonating, setIsDonating] = useState(false)
+    const [donationError, setDonationError] = useState<string | null>(null)
+    const [donationSuccess, setDonationSuccess] = useState(false)
+    const [txHash, setTxHash] = useState<string | null>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isUploadingCampaign, setIsUploadingCampaign] = useState(false)
     const [isCampaignUpdated, setIsCampaignUpdated] = useState(false)
-    const [isDonating, setIsDonating] = useState(false)
-    const [donationSuccess, setDonationSuccess] = useState(false)
-    const [donationError, setDonationError] = useState<string | null>(null)
-    const [txHash, setTxHash] = useState<string | null>(null)
-    const [donationActivity, setDonationActivity] = useState<DonationEventApi[]>([])
+    const queryClient = useQueryClient()
+    const { data: campaign, isLoading: isCampaignLoading } = useQuery({
+        queryKey: ['campaign', id],
+        queryFn: async () => {
+            if (!id) return null;
+            const cacheKey = `campaign_${id}`
+            const cached = getCache(cacheKey)
+            if (cached) return cached
 
-
-
-    useEffect(() => {
-        const loadCampaign = async () => {
-                setIsLoading(true)
-                const cacheKey = `campaign_${id}`
-                const cached = getCache(cacheKey)
-                if (cached) {
-                    setCampaign(cached)
-                    setIsLoading(false)
-                }
-                try {
-                    const numericId = BigInt(id || '0')
-                    const chainCampaign = await onchainGetCampaign(numericId)
+            try {
+                const numericId = BigInt(id || '0')
+                const chainCampaign = await onchainGetCampaign(numericId)
                 let amountRaised = 0
                 let metaImage: string | undefined = undefined
                 let metaGoal: number | undefined = undefined
@@ -73,63 +65,70 @@ const CampaignDetails = () => {
                 let metaLoaded = false
                 try {
                     const metaCid = await getCampaignMetadataCid(numericId)
-                        if (metaCid) {
-                        const meta = await fetch(`https://ipfs.io/ipfs/${metaCid}`).then(r => r.json()).catch(() => null)
-                            if (meta) {
+                    if (metaCid) {
+                        const meta = await fetch(getIPFSURL(metaCid)).then(r => r.json()).catch(() => null)
+                        if (meta) {
                             metaImage = meta.image
                             metaGoal = meta.goal
                             metaTitle = meta.title
                             metaDesc = meta.description
                             metaLoaded = true
-                            }
                         }
-                    } catch {}
-                    if (!chainCampaign && !metaLoaded) {
-                        setCampaign(null)
-                    setAllCampaigns([])
-                    return
                     }
-                    try {
-                        const donations = await onchainGetDonationsByCampaign(numericId)
-                        amountRaised = donations.totalRaisedHBAR
-                    } catch {}
+                } catch {}
+                
+                if (!chainCampaign && !metaLoaded) {
+                    return null
+                }
+                
+                try {
+                    const donations = await onchainGetDonationsByCampaign(numericId)
+                    amountRaised = donations.totalRaisedHBAR
+                } catch {}
+
                 const campaignObj: any = {
-                        id: Number(numericId),
-                        onchainId: Number(numericId),
+                    id: Number(numericId),
+                    onchainId: Number(numericId),
                     title: metaTitle || chainCampaign?.title,
                     description: metaDesc || chainCampaign?.description,
                     target: metaGoal !== undefined ? metaGoal : (chainCampaign ? Number(chainCampaign.goalHBAR) : 0),
-                        ngoWallet: chainCampaign?.ngo,
+                    ngoWallet: chainCampaign?.ngo,
                     image: metaImage || chainCampaign?.image,
-                        amountRaised,
-                        percentage: 0,
-                        active: chainCampaign?.active ?? true,
-                    }
+                    amountRaised,
+                    percentage: 0,
+                    active: chainCampaign?.active ?? true,
+                }
+                
                 const target = campaignObj.target || 0
                 campaignObj.percentage = target > 0 ? (amountRaised / target) * 100 : 0
-                    try {
-                        const apiCampaign = await getCampaignById(String(id))
-                        if (apiCampaign?.donationTotal != null) {
-                            const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
-                            if (backendRaised >= 0) {
-                                campaignObj.amountRaised = backendRaised
-                                campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
-                            }
+                
+                try {
+                    const apiCampaign = await getCampaignById(String(id))
+                    if (apiCampaign?.donationTotal != null) {
+                        const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
+                        if (backendRaised >= 0) {
+                            campaignObj.amountRaised = backendRaised
+                            campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
                         }
-                    } catch {}
-                    setCampaign(campaignObj)
-                    setCache(cacheKey, campaignObj)
+                    }
+                } catch {}
+                
+                setCache(cacheKey, campaignObj)
+                return campaignObj
             } catch {
-                setCampaign(null)
-            } finally {
-                setIsLoading(false)
+                return null
             }
         }
-        const loadRelated = async () => {
+    })
+
+    const { data: allCampaigns = [], isLoading: isRelatedLoading } = useQuery({
+        queryKey: ['related_campaigns', id],
+        queryFn: async () => {
+            const cacheKey = `campaigns_related_ex_${id}`
+            const cached = getCache(cacheKey)
+            if (cached) return cached
+
             try {
-                const cacheKey = `campaigns_related_ex_${id}`
-                const cached = getCache(cacheKey)
-                if (cached) setAllCampaigns(cached)
                 const list = await listAllCampaignsFromChain()
                 const currentId = Number(id || '0')
                 const filtered = list.filter((c: any) => Number(c.onchainId || c.id) !== currentId)
@@ -139,32 +138,27 @@ const CampaignDetails = () => {
                     const percentage = goal > 0 ? (raised / goal) * 100 : 0
                     return { ...c, goal, amountRaised: raised, percentage }
                 })
-                setAllCampaigns(mapped)
                 setCache(cacheKey, mapped)
+                return mapped
             } catch {
-                if (!getCache(`campaigns_related_ex_${id}`)) setAllCampaigns([])
+                return []
             }
         }
-        loadCampaign()
-        loadRelated()
-        if (id) {
-            apiGetDonationsByCampaign(id, 50)
-                .then(setDonationActivity)
-                .catch(() => setDonationActivity([]))
-        }
-    }, [id])
+    })
 
-    
-    useEffect(() => {
-        if (campaign && address && isConnected) {
-            const isCreator = campaign.ngoWallet?.toLowerCase() === address.toLowerCase() ||
-                             campaign.walletAddress?.toLowerCase() === address.toLowerCase()
-            setIsCampaignCreator(isCreator)
-            
-        } else {
-            setIsCampaignCreator(false)
-        }
-    }, [campaign, address, isConnected])
+    const { data: donationActivity = [] } = useQuery({
+        queryKey: ['campaign_donations', id],
+        queryFn: async () => {
+            if (!id) return []
+            try { return await apiGetDonationsByCampaign(id, 50) } catch { return [] }
+        },
+        enabled: !!id
+    })
+
+    const isLoading = isCampaignLoading || isRelatedLoading
+    const isCampaignCreator = campaign && address && isConnected ? 
+        (campaign.ngoWallet?.toLowerCase() === address.toLowerCase() || campaign.walletAddress?.toLowerCase() === address.toLowerCase()) 
+        : false
 
     if (isLoading) {
         return (
@@ -225,6 +219,17 @@ const CampaignDetails = () => {
                     txHash: receipt.transactionHash,
                 })
             } catch (_e) {}
+            // Fire-and-forget NFT mint — does not block success flow
+            mintDonationNFT({
+                donorAddress: address!,
+                campaignId: id!,
+                txHash: receipt.transactionHash,
+                amount: value,
+            }).catch((e) => {
+                if (import.meta.env.DEV) console.warn('NFT mint failed (non-critical):', e)
+            })
+            // Bust localStorage cache so query re-fetches fresh on-chain data
+            localStorage.removeItem(`campaign_${id}`)
             const numericId = BigInt(id || '0')
             const donations = await onchainGetDonationsByCampaign(numericId)
             const goal = campaign.target || 0
@@ -235,11 +240,9 @@ const CampaignDetails = () => {
                 amountRaised: updatedAmountRaised,
                 percentage: updatedPercentage
             }
-            setCampaign(updated)
+            queryClient.setQueryData(['campaign', id], updated)
             setCache(`campaign_${id}`, updated)
-            if (id) {
-                apiGetDonationsByCampaign(id, 50).then(setDonationActivity).catch(() => {})
-            }
+            if (id) { queryClient.invalidateQueries({ queryKey: ['campaign_donations', id] }) }
             setTimeout(() => {
                 setDonationSuccess(false)
                 setTxHash(null)
@@ -249,7 +252,9 @@ const CampaignDetails = () => {
                 // eslint-disable-next-line no-console
                 console.error('Donation failed', e)
             }
-            setDonationError('Unable to make donation. Please try again.')
+            // Display the specific error message generated by the adapter.ts, or a very generic fallback if none.
+            const errorMessage = e?.message || 'Unable to make donation. Please try again.'
+            setDonationError(errorMessage)
             setTimeout(() => {
                 setDonationError(null)
             }, 5000)
@@ -261,6 +266,32 @@ const CampaignDetails = () => {
     return (
         <div>
             <Header />
+
+            {/* ── Success Toast ── */}
+            {donationSuccess && (
+                <div
+                    className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-gray-900 text-white px-5 py-4 rounded-2xl shadow-2xl max-w-sm w-full animate-fade-in-up"
+                    role="alert"
+                >
+                    <div className="mt-0.5 flex-shrink-0 h-6 w-6 rounded-full bg-[#4ADE80] flex items-center justify-center">
+                        <Check size={14} className="text-black" strokeWidth={3} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">Donation Successful! 🎉</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Thank you for your contribution. Your proof-of-donation NFT will be issued shortly.</p>
+                        {txHash && (
+                            <a
+                                href={`https://hashscan.io/testnet/transaction/${txHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-[#4ADE80] underline mt-1 block truncate"
+                            >
+                                View on HashScan ↗
+                            </a>
+                        )}
+                    </div>
+                </div>
+            )}
             
           
             <section className="px-4 md:px-7 py-12">
@@ -344,7 +375,7 @@ const CampaignDetails = () => {
                                         if (!window.confirm('Are you sure you want to delete this campaign? This action is irreversible.')) return;
                                         try {
                                             await deactivateCampaign(BigInt(campaign.onchainId || campaign.id));
-                                            setCampaign({ ...campaign, active: false });
+                                            queryClient.setQueryData(['campaign', id], { ...campaign, active: false });
                                             navigate('/user-profile');
                                         } catch (_e) {
                                             alert('Failed to delete campaign.');
@@ -462,7 +493,7 @@ const CampaignDetails = () => {
                         You may also like
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-                    {allCampaigns.slice(0, 5).map((relatedCampaign) => {
+                    {allCampaigns.slice(0, 5).map((relatedCampaign: any) => {
                         const target = Number(relatedCampaign.target || 0)
                         const amountRaised = Number(relatedCampaign.amountRaised || 0)
                         const percentage = relatedCampaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0)
@@ -502,13 +533,21 @@ const CampaignDetails = () => {
                                 BigInt(campaign.id),
                                 campaignData.campaignTitle || campaign.title,
                                 campaignData.description || campaign.description,
-                                imageHash || ''
+                                imageHash || '',
+                                Number(campaignData.target || campaign.target)
                             );
+                            
+                            // Invalidate queries to refresh the UI
+                            queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+                            queryClient.invalidateQueries({ queryKey: ['userCampaigns', address] });
+                            
                             setIsCampaignUpdated(true);
                             setTimeout(() => setIsCampaignUpdated(false), 4000);
                             setIsEditModalOpen(false);
-                        } catch (_err: any) {
-                            
+                        } catch (err: any) {
+                            console.error("Failed to update campaign:", err);
+                            // Show error to user (you can adjust this if you have a state for it)
+                            alert(err.message || "Failed to update campaign. Did you redeploy the contract?");
                         } finally {
                             setIsUploadingCampaign(false);
                         }

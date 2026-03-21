@@ -19,13 +19,11 @@ storage.rules
 firestore.rules
 ngos.json
 .env.local
-.env.example
-
++
 storage.rules
 firestore.rules
 ngos.json
 .env.local
-.env.example
 
 README_RELAYER.md
 UNIFIED_PROFILE_IMPLEMENTATION.md

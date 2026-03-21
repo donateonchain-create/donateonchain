@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -9,13 +10,14 @@ import { SkeletonCard } from '../component/Skeleton'
 import ShopImg from '../assets/ShopImg.png'
 import { Filter, ChevronDown } from 'lucide-react'
 import { products } from '../data/databank'
+import { getStorageJson } from '../utils/safeStorage'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { listDesigns } from '../onchain/adapter'
 
 const Shop = () => {
     const navigate = useNavigate()
     const [isFilterOpen, setIsFilterOpen] = useState(false)
-    const [filterEntered, setFilterEntered] = useState(false)
+
     const [isMobileCategoryOpen, setIsMobileCategoryOpen] = useState(false)
     const [activeCategory, setActiveCategory] = useState('all')
     const [filters, setFilters] = useState<{
@@ -30,7 +32,90 @@ const Shop = () => {
     })
     const [filteredProducts, setFilteredProducts] = useState<any[]>([])
     const [allItems, setAllItems] = useState<any[]>([])
-    const [isLoading, setIsLoading] = useState(true)
+
+    const { isLoading } = useQuery({
+        queryKey: ['shopDesigns'],
+        queryFn: async () => {
+            try {
+                const storedDesigns = await getAllGlobalDesigns();
+                let chainDesigns: any[] = []
+                try {
+                    const onchain = await listDesigns()
+                    chainDesigns = onchain.map(d => ({
+                        id: Number(d.id),
+                        pieceName: d.title,
+                        frontDesign: {},
+                        price: `${Number(d.priceHBAR) / 1e18} HBAR`,
+                        type: 'shirt',
+                        createdAt: Date.now(),
+                    }))
+                } catch {}
+                
+                const validStoredDesigns = storedDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
+                
+                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
+                
+                const allDesigns = [...chainDesigns, ...validStoredDesigns, ...validUserDesigns, ...validNgoDesigns];
+                const uniqueDesigns = Array.from(
+                    new Map(allDesigns.map(design => [design.id, design])).values()
+                );
+                
+                const designItems = uniqueDesigns.map((design: any) => ({
+                    id: design.id,
+                    image: design.frontDesign?.url || design.frontDesign?.dataUrl || '/src/assets/Clothimg.png',
+                    title: design.pieceName || 'Untitled Design',
+                    creator: design.isNgo ? 'NGO Design' : 'User Design',
+                    price: design.price || '0',
+                    category: design.type?.toLowerCase() || 'shirt',
+                    categoryType: 'design',
+                    isDesign: true,
+                    design: design
+                }));
+
+                const sortedDesigns = designItems.sort((a: any, b: any) => {
+                    const aTime = new Date(a.design?.createdAt || 0).getTime()
+                    const bTime = new Date(b.design?.createdAt || 0).getTime()
+                    return bTime - aTime
+                });
+                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
+                setAllItems(combinedItems);
+                setFilteredProducts(combinedItems);
+                return combinedItems;
+            } catch (error) {
+                const userDesigns = getStorageJson<any[]>('userDesigns', []);
+                const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
+                
+                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
+                const allDesigns = [...validUserDesigns, ...validNgoDesigns];
+                
+                const designItems = allDesigns.map((design: any) => ({
+                    id: design.id,
+                    image: design.frontDesign?.url || design.frontDesign?.dataUrl || '/src/assets/Clothimg.png',
+                    title: design.pieceName || 'Untitled Design',
+                    creator: 'User Design',
+                    price: design.price || '0',
+                    category: design.type?.toLowerCase() || 'shirt',
+                    categoryType: 'design',
+                    isDesign: true,
+                    design: design
+                }));
+                
+                const sortedDesigns = designItems.sort((a: any, b: any) => {
+                    const aTime = new Date(a.design?.createdAt || 0).getTime()
+                    const bTime = new Date(b.design?.createdAt || 0).getTime()
+                    return bTime - aTime
+                });
+                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
+                setAllItems(combinedItems);
+                setFilteredProducts(combinedItems);
+                return combinedItems;
+            }
+        }
+    })
     
 
     const getCategoryDisplayName = (category: string) => {
@@ -60,104 +145,7 @@ const Shop = () => {
         return 'unknown'
     }
   
-    useEffect(() => {
-        const loadDesigns = async () => {
-            try {
-                const storedDesigns = await getAllGlobalDesigns();
-                let chainDesigns: any[] = []
-                try {
-                    const onchain = await listDesigns()
-                    chainDesigns = onchain.map(d => ({
-                        id: Number(d.id),
-                        pieceName: d.title,
-                        frontDesign: {},
-                        price: `${Number(d.priceHBAR) / 1e18} HBAR`,
-                        type: 'shirt',
-                        createdAt: Date.now(),
-                    }))
-                } catch {}
-                
-              
-                const validStoredDesigns = storedDesigns.filter((design: any) => design && design.id && design.pieceName);
-                
-                
-               
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-                
-                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
-                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
-                
-               
-                const allDesigns = [...chainDesigns, ...validStoredDesigns, ...validUserDesigns, ...validNgoDesigns];
-                const uniqueDesigns = Array.from(
-                    new Map(allDesigns.map(design => [design.id, design])).values()
-                );
-                
-                
-                
-               
-                const designItems = uniqueDesigns.map((design: any) => ({
-                    id: design.id,
-                    image: design.frontDesign?.url || design.frontDesign?.dataUrl || '/src/assets/Clothimg.png',
-                    title: design.pieceName || 'Untitled Design',
-                    creator: design.isNgo ? 'NGO Design' : 'User Design',
-                    price: design.price || '0',
-                    category: design.type?.toLowerCase() || 'shirt',
-                    categoryType: 'design',
-                    isDesign: true,
-                    design: design
-                }));
-                
-               
-                const sortedDesigns = designItems.sort((a: any, b: any) => {
-                    const aTime = new Date(a.design?.createdAt || 0).getTime()
-                    const bTime = new Date(b.design?.createdAt || 0).getTime()
-                    return bTime - aTime
-                });
-                const combinedItems = [...sortedDesigns, ...products];
-                setAllItems(combinedItems);
-                setFilteredProducts(combinedItems);
-                setIsLoading(false);
-            } catch (error) {
-                if (import.meta.env.DEV) {
-                    // eslint-disable-next-line no-console
-                    console.error('Error loading designs from Firebase, using localStorage only:', error);
-                }
-               
-                const userDesigns = JSON.parse(localStorage.getItem('userDesigns') || '[]');
-                const ngoDesigns = JSON.parse(localStorage.getItem('ngoDesigns') || '[]');
-                
-                const validUserDesigns = userDesigns.filter((design: any) => design && design.id && design.pieceName);
-                const validNgoDesigns = ngoDesigns.filter((design: any) => design && design.id && design.pieceName);
-                const allDesigns = [...validUserDesigns, ...validNgoDesigns];
-                
-                const designItems = allDesigns.map((design: any) => ({
-                    id: design.id,
-                    image: design.frontDesign?.url || design.frontDesign?.dataUrl || '/src/assets/Clothimg.png',
-                    title: design.pieceName || 'Untitled Design',
-                    creator: 'User Design',
-                    price: design.price || '0',
-                    category: design.type?.toLowerCase() || 'shirt',
-                    categoryType: 'design',
-                    isDesign: true,
-                    design: design
-                }));
-                
-                const sortedDesigns = designItems.sort((a: any, b: any) => {
-                    const aTime = new Date(a.design?.createdAt || 0).getTime()
-                    const bTime = new Date(b.design?.createdAt || 0).getTime()
-                    return bTime - aTime
-                });
-                const combinedItems = [...sortedDesigns, ...products];
-                setAllItems(combinedItems);
-                setFilteredProducts(combinedItems);
-                setIsLoading(false);
-            }
-        };
-        
-        loadDesigns();
-    }, [])
+
 
    
     const applyFilters = () => {
@@ -250,14 +238,7 @@ const Shop = () => {
         }))
     }
 
-    useEffect(() => {
-        if (isFilterOpen) {
-            const id = requestAnimationFrame(() => setFilterEntered(true))
-            return () => cancelAnimationFrame(id)
-        } else {
-            setFilterEntered(false)
-        }
-    }, [isFilterOpen])
+
     return (
         <div>
             <Header />
@@ -360,7 +341,7 @@ const Shop = () => {
                         {isFilterOpen && (
                             <>
                                 <div className="fixed inset-0 z-10" onClick={() => setIsFilterOpen(false)} />
-                                <div className={`absolute right-0 top-full mt-3 z-20 bg-white text-black rounded-2xl shadow-xl w-[300px] max-w-[calc(100vw-56px)] p-6 transition-all duration-200 ease-in transform ${filterEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                                <div className={`absolute right-0 top-full mt-3 z-20 bg-white text-black rounded-2xl shadow-xl w-[300px] max-w-[calc(100vw-56px)] p-6 transition-all duration-200 ease-in transform ${'animate-in fade-in slide-in-from-top-4 duration-200'}`}>
                                     <h4 className="text-lg font-semibold mb-4">Filter by</h4>
                                     <div className="space-y-4">
                                         <div>

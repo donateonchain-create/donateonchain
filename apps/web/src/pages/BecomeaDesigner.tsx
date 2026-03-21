@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
+import { getStorageJson } from '../utils/safeStorage'
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -19,67 +21,41 @@ const BecomeaDesigner = () => {
     const { address, isConnected } = useAccount()
     const chainId = useChainId()
     const { open } = useAppKit()
+    const queryClient = useQueryClient()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
-    const [existingDesignerData, setExistingDesignerData] = useState<any>(null)
-    const [isLoadingApplication, setIsLoadingApplication] = useState(true)
+    const showToast = (msg: string, type: 'success' | 'error') => {
+        setToast({ msg, type })
+        setTimeout(() => setToast(null), 4000)
+    }
 
-    useEffect(() => {
-        const checkExistingApplication = async () => {
-            if (!isConnected || !address) {
-                setHasAlreadyApplied(false)
-                setExistingDesignerData(null)
-                setIsLoadingApplication(false)
-                return
-            }
-            setIsLoadingApplication(true)
+    const { data: designerApplicationData, isLoading: isLoadingApplication } = useQuery({
+        queryKey: ['designerApplication', address, isConnected],
+        queryFn: async () => {
+            if (!isConnected || !address) return { hasApplied: false, data: null }
             try {
                 const existingApplication = await getDesignerApplicationByWallet(address)
-                if (existingApplication) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(existingApplication)
-                    return
-                }
-                const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                if (existingApplication) return { hasApplied: true, data: existingApplication }
+                const designers = getStorageJson<any[]>('designers', [])
                 const userDesigner = designers.find((designer: any) =>
                     designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     designer.walletAddress?.toLowerCase() === address.toLowerCase()
                 )
-                if (userDesigner) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(userDesigner)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingDesignerData(null)
-                }
-            } catch (error) {
-                const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                if (userDesigner) return { hasApplied: true, data: userDesigner }
+                return { hasApplied: false, data: null }
+            } catch (_error) {
+                const designers = getStorageJson<any[]>('designers', [])
                 const userDesigner = designers.find((designer: any) =>
                     designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                     designer.walletAddress?.toLowerCase() === address.toLowerCase()
                 )
-                if (userDesigner) {
-                    setHasAlreadyApplied(true)
-                    setExistingDesignerData(userDesigner)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingDesignerData(null)
-                }
-            } finally {
-                setIsLoadingApplication(false)
+                if (userDesigner) return { hasApplied: true, data: userDesigner }
+                return { hasApplied: false, data: null }
             }
         }
-        checkExistingApplication()
-    }, [address, isConnected])
+    })
 
-    useEffect(() => {
-        if (toast) {
-            const timer = setTimeout(() => {
-                setToast(null)
-            }, 4000)
-            return () => clearTimeout(timer)
-        }
-    }, [toast])
+    const hasAlreadyApplied = designerApplicationData?.hasApplied ?? false
+    const existingDesignerData = designerApplicationData?.data ?? null
 
     useWatchContractEvent({
         address: addresses.DONATE_ON_CHAIN as any,
@@ -87,7 +63,7 @@ const BecomeaDesigner = () => {
         eventName: 'AccountVerified',
         onLogs: (logs) => {
             if (address && logs.some((l: any) => l.args?.account?.toLowerCase() === address.toLowerCase())) {
-                setToast({ msg: 'Account verified.', type: 'success' })
+                showToast('Account verified.', 'success')
             }
         },
     })
@@ -100,13 +76,15 @@ const BecomeaDesigner = () => {
     const [primaryDesignField, setPrimaryDesignField] = useState('')
     const [experienceLevel, setExperienceLevel] = useState('')
     const [portfolioLink, setPortfolioLink] = useState('')
-    const [sampleWorks, setSampleWorks] = useState<File[]>([])
+    const [sampleWorks, setSampleWorks] = useState<{ file: File; preview: string }[]>([])
     const [linkedinProfile, setLinkedinProfile] = useState('')
     const [socialHandle, setSocialHandle] = useState('')
     const [verificationDocument, setVerificationDocument] = useState<File | null>(null)
     const [termsAccepted, setTermsAccepted] = useState(false)
     const [originalityConfirmed, setOriginalityConfirmed] = useState(false)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [submitError, setSubmitError] = useState<string | null>(null)
 
     const designFieldOptions = [
         'UI/UX Design',
@@ -126,24 +104,28 @@ const BecomeaDesigner = () => {
         'Expert'
     ]
 
-    const handleSampleWorkUpload = (file: File) => {
-        if (sampleWorks.length < 5) {
-            setSampleWorks([...sampleWorks, file])
-        }
-    }
-
     const handleSampleWorkRemove = (index: number) => {
-        setSampleWorks(sampleWorks.filter((_, i) => i !== index))
+        setSampleWorks((prev) => {
+            const next = [...prev]
+            const removed = next.splice(index, 1)[0]
+            if (removed) URL.revokeObjectURL(removed.preview)
+            return next
+        })
     }
 
     const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'sample' | 'verification') => {
-        const file = event.target.files?.[0]
-        if (file) {
-            if (type === 'sample') {
-                handleSampleWorkUpload(file)
-            } else if (type === 'verification') {
-                setVerificationDocument(file)
+        const files = event.target.files
+        if (!files || files.length === 0) return
+
+        if (type === 'sample') {
+            const remainingSlots = 5 - sampleWorks.length
+            const toAdd = Array.from(files).slice(0, Math.max(remainingSlots, 0))
+            if (toAdd.length) {
+                const items = toAdd.map((file) => ({ file, preview: URL.createObjectURL(file) }))
+                setSampleWorks((prev) => [...prev, ...items])
             }
+        } else if (type === 'verification') {
+            setVerificationDocument(files[0])
         }
     }
 
@@ -151,10 +133,12 @@ const BecomeaDesigner = () => {
         open({ view: 'Connect' })
     }
 
+    const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+
     const isSection1Valid = () => {
-        return fullName.trim() !== '' && 
-               email.trim() !== '' && 
-               username.trim() !== '' && 
+        return fullName.trim() !== '' &&
+               isValidEmail(email) &&
+               username.trim() !== '' &&
                country !== ''
     }
 
@@ -180,26 +164,28 @@ const BecomeaDesigner = () => {
     const handleSubmit = async () => {
         if (!address) return
         
+        let savedOk = false
+        setIsSubmitting(true)
         try {
             if (chainId && chainId !== hederaTestnet.id) {
-                setToast({ msg: 'Switch to Hedera Testnet and retry.', type: 'error' })
+                showToast('Switch to Hedera Testnet and retry.', 'error')
                 return
             }
 
             const pc = publicClient()
             if (!pc) {
-                setToast({ msg: 'Unable to connect to network', type: 'error' })
+                showToast('Unable to connect to network', 'error')
                 return
             }
             const bal = await pc.getBalance({ address })
             if (bal === 0n) {
-                setToast({ msg: 'Fund your Hedera Testnet account, then retry.', type: 'error' })
+                showToast('Fund your Hedera Testnet account, then retry.', 'error')
                 return
             }
 
             const sampleWorkHashes: string[] = []
-            for (const file of sampleWorks) {
-                const hash = await getIPFSHash(file)
+            for (const item of sampleWorks) {
+                const hash = await getIPFSHash(item.file)
                 if (hash) sampleWorkHashes.push(hash)
             }
 
@@ -226,7 +212,7 @@ const BecomeaDesigner = () => {
             const metadataHash = await uploadMetadataToIPFS(metadata)
 
             if (!metadataHash) {
-                setToast({ msg: 'Failed to upload metadata to IPFS.', type: 'error' })
+                showToast('Failed to upload metadata to IPFS.', 'error')
                 return
             }
 
@@ -251,6 +237,7 @@ const BecomeaDesigner = () => {
             }
 
             await saveDesignerApplication(designerData)
+            savedOk = true
             try {
                 await createKycVerification({ walletAddress: address, metadata })
             } catch {}
@@ -270,20 +257,20 @@ const BecomeaDesigner = () => {
                         const updatedDesignerData = { ...designerData, transactionHash: receipt.transactionHash }
                         await saveDesignerApplication(updatedDesignerData)
                     }
-                    setToast({ msg: 'Designer application submitted on-chain with IPFS metadata.', type: 'success' })
+                    showToast('Designer application submitted on-chain with IPFS metadata.', 'success')
                 } else {
-                    setToast({ msg: 'Designer application saved to database. Your previous application is being reviewed.', type: 'success' })
+                    showToast('Designer application saved to database. Your previous application is being reviewed.', 'success')
                 }
             } catch (e: any) {
                 const msg = String(e?.message || e)
                 if (msg.includes('DesignerAlreadyRegistered')) {
-                    setToast({ msg: 'This wallet address is already registered as a designer on-chain. Application saved to database.', type: 'success' })
+                    showToast('This wallet address is already registered as a designer on-chain. Application saved to database.', 'success')
                 } else if (msg.includes('Sender account not found')) {
-                    setToast({ msg: 'Sender account not found. Fund Hedera Testnet account and retry.', type: 'error' })
+                    showToast('Sender account not found. Fund Hedera Testnet account and retry.', 'error')
                 } else if (msg.includes('EmptyMetadata')) {
-                    setToast({ msg: 'Metadata is required for registration.', type: 'error' })
+                    showToast('Metadata is required for registration.', 'error')
                 } else {
-                    setToast({ msg: 'On-chain designer registration failed. Application saved to database.', type: 'error' })
+                    showToast('On-chain designer registration failed. Application saved to database.', 'error')
                 }
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
@@ -292,17 +279,18 @@ const BecomeaDesigner = () => {
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.log('Designer application saved to Firebase')
+                console.log('Designer application saved to API')
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-                console.error('Error saving designer application to Firebase:', error)
+                console.error('Error saving designer application to API:', error)
             }
-            setToast({ msg: 'Failed to save designer application.', type: 'error' })
+            setSubmitError('Failed to save designer application. Please try again.')
+        } finally {
+            setIsSubmitting(false)
+            if (savedOk) setShowSuccessModal(true)
         }
-
-        setShowSuccessModal(true)
     }
 
     const nextSection = () => {
@@ -452,8 +440,7 @@ const BecomeaDesigner = () => {
                                     <div className="flex items-center justify-center gap-3">
                                         <button
                                             onClick={() => {
-                                                setHasAlreadyApplied(false)
-                                                setExistingDesignerData(null)
+queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isConnected] })
                                                 if (address) {
                                                     deleteDesignerApplication(address).catch(() => {})
                                                 }
@@ -512,12 +499,11 @@ const BecomeaDesigner = () => {
                                                     await deleteDesignerApplication(address)
                                                 } catch {}
                                                 try {
-                                                    const designers = JSON.parse(localStorage.getItem('designers') || '[]')
+                                                    const designers = getStorageJson<any[]>('designers', [])
                                                     const filtered = designers.filter((d: any) => (d.connectedWalletAddress || d.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('designers', JSON.stringify(filtered))
                                                 } catch {}
-                                                setHasAlreadyApplied(false)
-                                                setExistingDesignerData(null)
+queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isConnected] })
                                             }}
                                             className="bg-red-600 text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-red-700 transition-colors"
                                         >
@@ -539,25 +525,35 @@ const BecomeaDesigner = () => {
                         <h1 className="text-4xl font-bold text-black mb-2">
                             Become a Verified Designer on DonateOnchain
                         </h1>
-                        <p className="text-gray-600">
+                        <p className="text-gray-600 mb-2">
                             Join our community of designers and start creating impactful designs. Complete the form below.
                         </p>
+                        
                         </div>
 
                 
                     <div className="flex justify-center mb-8 gap-2">
-                        {[1, 2, 3, 4, 5].map((section) => (
-                            <div key={section} className="flex items-center">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                                    currentSection === section ? 'bg-black text-white' : 
-                                    currentSection > section ? 'bg-green-500 text-white' :
-                                    'bg-gray-300 text-gray-600'
-                                }`}>
-                                    {currentSection > section ? '✓' : section}
+                        {[
+                            { step: 1, label: 'Details' },
+                            { step: 2, label: 'Expertise' },
+                            { step: 3, label: 'Social' },
+                            { step: 4, label: 'Wallet' },
+                            { step: 5, label: 'Review' }
+                        ].map(({ step, label }) => (
+                            <div key={step} className="flex items-center">
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                                        currentSection === step ? 'bg-black text-white' :
+                                        currentSection > step ? 'bg-green-500 text-white' :
+                                        'bg-gray-300 text-gray-600'
+                                    }`}>
+                                        {currentSection > step ? '✓' : step}
+                                    </div>
+                                    <span className="text-xs text-gray-500 mt-1">{label}</span>
                                 </div>
-                                {section < 5 && (
+                                {step < 5 && (
                                     <div className={`w-12 h-1 mx-1 ${
-                                        currentSection > section ? 'bg-green-500' : 'bg-gray-300'
+                                        currentSection > step ? 'bg-green-500' : 'bg-gray-300'
                                     }`} />
                                 )}
                             </div>
@@ -567,10 +563,8 @@ const BecomeaDesigner = () => {
 
                                 {currentSection === 1 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">👤 Section 1: Personal & Contact Info</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 1: Personal & contact info</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. Full Name <span className="text-red-500">*</span>
                                 </label>
@@ -591,9 +585,12 @@ const BecomeaDesigner = () => {
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent ${email.trim() && !isValidEmail(email) ? 'border-red-500' : 'border-gray-300'}`}
                                     placeholder="your.email@example.com"
                                 />
+                                {email.trim() && !isValidEmail(email) && (
+                                    <p className="text-red-500 text-xs mt-1">Enter a valid email address.</p>
+                                )}
                             </div>
 
                             <div className="mb-6">
@@ -639,10 +636,8 @@ const BecomeaDesigner = () => {
                 
                     {currentSection === 2 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">🎨 Section 2: Design Expertise</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 2: Design expertise</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. Primary Design Field <span className="text-red-500">*</span>
                                 </label>
@@ -698,16 +693,35 @@ const BecomeaDesigner = () => {
                                     4. Upload Sample Works (max 3–5 files) <span className="text-red-500">*</span>
                                 </label>
                                 {sampleWorks.length > 0 && (
-                                    <div className="mb-3 space-y-2">
-                                        {sampleWorks.map((file, index) => (
-                                            <div key={index} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded border border-gray-200">
-                                                <span className="text-sm text-black">{file.name}</span>
-                                                <button
-                                                    onClick={() => handleSampleWorkRemove(index)}
-                                                    className="text-red-500 hover:text-red-700"
-                                                >
-                                                    <X size={16} />
-                                                </button>
+                                    <div className="mb-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                        {sampleWorks.map((item, index) => (
+                                            <div
+                                                key={index}
+                                                className="relative group border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                                            >
+                                                <div className="aspect-square w-full bg-gray-100 flex items-center justify-center overflow-hidden">
+                                                    {!item.file.type || item.file.type.startsWith('image/') ? (
+                                                        <img
+                                                            src={item.preview}
+                                                            alt={item.file.name}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-600">
+                                                            PDF
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center justify-between px-2 py-1 bg-white/90 text-xs">
+                                                    <span className="truncate max-w-[80%] text-black">{item.file.name}</span>
+                                                    <button
+                                                        onClick={() => handleSampleWorkRemove(index)}
+                                                        className="text-red-500 hover:text-red-700 ml-2 flex-shrink-0"
+                                                        type="button"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -719,6 +733,7 @@ const BecomeaDesigner = () => {
                                         <input
                                             type="file"
                                             accept=".jpg,.jpeg,.png,.pdf"
+                                            multiple
                                             onChange={(e) => handleFileInputChange(e, 'sample')}
                                             className="hidden"
                                             id="sample-work-upload"
@@ -735,10 +750,8 @@ const BecomeaDesigner = () => {
                   
                     {currentSection === 3 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">🔗 Section 3: Social Proof / Verification</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 3: Social & verification (optional)</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. LinkedIn Profile (Optional)
                                 </label>
@@ -801,10 +814,8 @@ const BecomeaDesigner = () => {
                   
                     {currentSection === 4 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">💳 Section 4: Payment & Wallet Info</h2>
-                            
-                         
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 4: Connect wallet</h2>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     1. Connect Your Wallet <span className="text-red-500">*</span>
                                 </label>
@@ -836,10 +847,9 @@ const BecomeaDesigner = () => {
                    
                     {currentSection === 5 && (
                         <div className="bg-white rounded-2xl p-8 shadow-sm">
-                            <h2 className="text-2xl font-bold text-black mb-6">✅ Section 5: Agreement / Terms</h2>
-                            
-                          
-                            <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-black mb-8">Step 5: Review & submit</h2>
+                            <p className="text-sm text-gray-500 mb-8">Your application will be saved, sent for KYC, and submitted on-chain.</p>
+                            <div className="mt-6 mb-6">
                                 <label className="block text-sm font-medium text-black mb-2">
                                     Review Your Information
                                 </label>
@@ -928,6 +938,36 @@ const BecomeaDesigner = () => {
                         </div>
                     </div>
                 </section>
+            )}
+
+            {isSubmitting && (
+                <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 md:p-8 max-w-sm w-full text-center shadow-lg">
+                        <div className="mx-auto mb-4 w-12 h-12 border-4 border-gray-200 border-t-black rounded-full animate-spin" />
+                        <h2 className="text-lg font-semibold text-black mb-2">Submitting application…</h2>
+                        <p className="text-sm text-gray-600">
+                            Please wait while we upload your files, save your application, and start verification.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {submitError && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-8 max-w-md text-center">
+                        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <X className="w-10 h-10 text-red-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-black mb-4">Application failed</h2>
+                        <p className="text-gray-600 mb-6">{submitError}</p>
+                        <button
+                            onClick={() => setSubmitError(null)}
+                            className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
             )}
 
             {showSuccessModal && (

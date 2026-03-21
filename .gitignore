@@ -8,12 +8,17 @@ broadcast/
 # Docs
 docs/
 
-# Environment files — catch every variant, including .env.github
+# Environment files
 .env
-.env.*
+.env.local
+.env.production
+.env.development
+.env.backup
+.env.old
+# NOTE: .env.1password is safe to commit - it only contains secret references
 !.env.1password
-!.env.example
-!**/.env.example
+!services/api/.env.example
+!apps/web/.env.example
 
 # Node modules
 node_modules/

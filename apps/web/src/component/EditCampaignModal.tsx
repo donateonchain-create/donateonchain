@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { X, ChevronDown, Upload as UploadIcon } from 'lucide-react';
 import Button from './Button';
 
@@ -10,14 +10,14 @@ interface EditCampaignModalProps {
 }
 
 const EditCampaignModal = ({ isOpen, onClose, onSubmit, campaign }: EditCampaignModalProps) => {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState(() => ({
         coverImage: null as File | null,
-        campaignTitle: '',
-        category: '',
-        description: '',
-        target: '30000'
-    });
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+        campaignTitle: campaign?.title || '',
+        category: campaign?.category || '',
+        description: campaign?.description || campaign?.about || '',
+        target: campaign?.goal?.toString() || campaign?.target?.toString() || '30000'
+    }));
+    const [previewImage, setPreviewImage] = useState<string | null>(() => campaign?.image || null);
     const [isCategoryOpen, setIsCategoryOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,23 +30,7 @@ const EditCampaignModal = ({ isOpen, onClose, onSubmit, campaign }: EditCampaign
         'Disaster Relief'
     ];
 
-    // Populate form with existing campaign data
-    useEffect(() => {
-        if (campaign) {
-            setFormData({
-                coverImage: null,
-                campaignTitle: campaign.title || '',
-                category: campaign.category || '',
-                description: campaign.description || campaign.about || '',
-                target: campaign.goal?.toString() || campaign.target?.toString() || '30000'
-            });
-            
-            // Set preview image if exists
-            if (campaign.image) {
-                setPreviewImage(campaign.image);
-            }
-        }
-    }, [campaign, isOpen]);
+
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

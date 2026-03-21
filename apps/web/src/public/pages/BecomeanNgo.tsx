@@ -2,15 +2,21 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
+<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
+========
+import { getStorageJson } from '../utils/safeStorage'
+>>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
+import { SkeletonFormApplication } from '../component/Skeleton'
 import { ChevronDown, Upload, CheckCircle, Clock } from 'lucide-react'
 import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/storageApi'
 import { ngoRegisterPending } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
 import { publicClient, read } from '../onchain/client'
 import { addresses, abis } from '../onchain/contracts'
+import { createKycVerification } from '../api'
 
 const BecomeanNgo = () => {
     const navigate = useNavigate()
@@ -18,19 +24,19 @@ const BecomeanNgo = () => {
     const chainId = useChainId()
     const { open } = useAppKit()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
+const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [existingNgoData, setExistingNgoData] = useState<any>(null)
-    
- 
+    const [isLoadingApplication, setIsLoadingApplication] = useState(true)
+
     useEffect(() => {
         const checkExistingApplication = async () => {
             if (!isConnected || !address) {
                 setHasAlreadyApplied(false)
                 setExistingNgoData(null)
+                setIsLoadingApplication(false)
                 return
             }
-            
-           
+            setIsLoadingApplication(true)
             try {
                 const existingApplication = await getNgoApplicationByWallet(address)
                 if (existingApplication) {
@@ -38,15 +44,44 @@ const BecomeanNgo = () => {
                     setExistingNgoData(existingApplication)
                     return
                 }
+<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
+                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const userNgo = ngos.find((ngo: any) =>
+                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userNgo) {
+                    setHasAlreadyApplied(true)
+                    setExistingNgoData(userNgo)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingNgoData(null)
+                }
+            } catch (_error) {
+                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                const userNgo = ngos.find((ngo: any) =>
+                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
+                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
+                )
+                if (userNgo) {
+                    setHasAlreadyApplied(true)
+                    setExistingNgoData(userNgo)
+                } else {
+                    setHasAlreadyApplied(false)
+                    setExistingNgoData(null)
+                }
+            } finally {
+                setIsLoadingApplication(false)
+========
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
-                    console.error('Error checking Firebase for NGO application:', error)
+                    console.error('Error checking API for NGO application:', error)
                 }
             }
             
             
-            const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+            const ngos = getStorageJson<any[]>('ngos', [])
            
             const userNgo = ngos.find((ngo: any) => 
                 ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
@@ -59,9 +94,9 @@ const BecomeanNgo = () => {
             } else {
                 setHasAlreadyApplied(false)
                 setExistingNgoData(null)
+>>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
         }
-        
         checkExistingApplication()
     }, [address, isConnected])
 
@@ -196,6 +231,10 @@ const BecomeanNgo = () => {
             }
 
             const pc = publicClient()
+            if (!pc) {
+                setToast({ msg: 'Unable to connect to network', type: 'error' })
+                return
+            }
             const bal = await pc.getBalance({ address })
             if (bal === 0n) {
                 setToast({ msg: 'Fund your Hedera Testnet account, then retry.', type: 'error' })
@@ -265,6 +304,9 @@ const BecomeanNgo = () => {
             }
 
             await saveNgoApplication(ngoData)
+            try {
+                await createKycVerification({ walletAddress: address, metadata })
+            } catch {}
             
             try {
                 let needsOnChainRegistration = true
@@ -305,12 +347,20 @@ const BecomeanNgo = () => {
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
+<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
                 console.log('NGO application saved to Firebase')
+========
+                console.log('NGO application saved to API')
+>>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
+<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
                 console.error('Error saving NGO application to Firebase:', error)
+========
+                console.error('Error saving NGO application to API:', error)
+>>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
             setToast({ msg: 'Failed to save NGO application.', type: 'error' })
         }
@@ -353,6 +403,10 @@ const BecomeanNgo = () => {
             )}
             
           
+            {isConnected && isLoadingApplication && (
+                <SkeletonFormApplication />
+            )}
+
             {!isConnected && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
@@ -380,7 +434,7 @@ const BecomeanNgo = () => {
             )}
 
           
-            {isConnected && hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && hasAlreadyApplied && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
                         <div className="bg-white rounded-2xl p-8 md:p-12 text-center shadow-sm">
@@ -532,7 +586,7 @@ const BecomeanNgo = () => {
                                                     await deleteNgoApplication(address)
                                                 } catch {}
                                                 try {
-                                                    const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
+                                                    const ngos = getStorageJson<any[]>('ngos', [])
                                                     const filtered = ngos.filter((n: any) => (n.connectedWalletAddress || n.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('ngos', JSON.stringify(filtered))
                                                 } catch {}
@@ -552,7 +606,7 @@ const BecomeanNgo = () => {
             )}
 
           
-            {isConnected && !hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && (
                 <section className="px-4 md:px-7 py-12 bg-gray-50">
                 <div className="max-w-4xl mx-auto">
                 
