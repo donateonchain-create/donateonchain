@@ -114,7 +114,7 @@ const MainAppRoutes = () => {
                     <Route path="/product/:id" element={<ProductPage />} />
                     <Route path="/cart" element={<Cart />} />
                     <Route path="/checkout" element={<Checkout />} />
-                    <Route path="/user-profile" element={<PrivateRoute><UserProfile /></PrivateRoute>} />
+                    <Route path="/user-profile" element={<PrivateRoute mode="kyc"><UserProfile /></PrivateRoute>} />
                     <Route path="/campaign" element={<Campaign />} />
                     <Route path="/campaign/:id" element={<CampaignDetails />} />
                     <Route path="/how-it-works" element={<HowItWorks />} />

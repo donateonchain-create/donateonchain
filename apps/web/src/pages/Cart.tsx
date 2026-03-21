@@ -1,19 +1,26 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from 'react'
+import { useAccount } from 'wagmi'
 import Header from "../component/Header";
 import Footer from "../component/Footer";
 import Banner from "../component/Banner";
 import Button from "../component/Button";
+import KycModal from '../component/KycModal'
 import { products } from "../data/databank";
 import { useCart } from "../context/CartContext";
 import { getStorageJson } from '../utils/safeStorage'
 import { getAllGlobalDesigns } from '../utils/storageApi'
-import { getDesignPrice } from '../onchain/adapter';
+import { getDesignPrice, isKycVerifiedOnChain } from '../onchain/adapter';
 import { SkeletonCartRow } from '../component/Skeleton';
+import { getKycVerifications } from '../api'
 
 const Cart = () => {
   const navigate = useNavigate();
   const { cartItems, updateQuantity, removeItem } = useCart();
+  const { address } = useAccount()
+  const [isKycModalOpen, setIsKycModalOpen] = useState(false)
+  const [kycError, setKycError] = useState<string | null>(null)
 
   const { data: customDesigns = [], isLoading: isDesignsLoading } = useQuery({
     queryKey: ['customDesigns'],
@@ -94,6 +101,29 @@ const Cart = () => {
   const formatPrice = (amount: number) => {
     return `${amount.toLocaleString()} HBAR`;
   };
+
+  const handleContinueToCheckout = async () => {
+    if (!address) {
+      navigate('/checkout')
+      return
+    }
+
+    setKycError(null)
+    try {
+      const kyc = await getKycVerifications({ walletAddress: address, page: 1, limit: 1 })
+      const latest = kyc.items?.[0]
+      const isOnChainKyc = await isKycVerifiedOnChain(address as `0x${string}`)
+      if (latest?.status !== 'approved' || !isOnChainKyc) {
+        setIsKycModalOpen(true)
+        return
+      }
+    } catch {
+      setKycError('Unable to verify KYC status. Please try again.')
+      return
+    }
+
+    navigate('/checkout')
+  }
 
     return (
         <div>
@@ -329,10 +359,13 @@ const Cart = () => {
                     variant="primary-bw"
                     size="lg"
                     className="w-full"
-                    onClick={() => navigate("/checkout")}
+                    onClick={handleContinueToCheckout}
                   >
                     Continue to Checkout
                   </Button>
+                  {kycError && (
+                    <p className="mt-3 text-sm text-red-700">{kycError}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -341,6 +374,15 @@ const Cart = () => {
       </section>
 
             <Banner />
+            <KycModal
+              isOpen={isKycModalOpen}
+              walletAddress={address}
+              onClose={() => setIsKycModalOpen(false)}
+              onApproved={async () => {
+                setIsKycModalOpen(false)
+                navigate('/checkout')
+              }}
+            />
             <Footer />
         </div>
   );

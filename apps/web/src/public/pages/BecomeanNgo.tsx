@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useWatchContractEvent } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
-<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
-========
 import { getStorageJson } from '../utils/safeStorage'
->>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
 import { hederaTestnet } from '../config/reownConfig'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -24,7 +21,7 @@ const BecomeanNgo = () => {
     const chainId = useChainId()
     const { open } = useAppKit()
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
+    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
     const [existingNgoData, setExistingNgoData] = useState<any>(null)
     const [isLoadingApplication, setIsLoadingApplication] = useState(true)
 
@@ -44,58 +41,28 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
                     setExistingNgoData(existingApplication)
                     return
                 }
-<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
-                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
-                const userNgo = ngos.find((ngo: any) =>
-                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userNgo) {
-                    setHasAlreadyApplied(true)
-                    setExistingNgoData(userNgo)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingNgoData(null)
-                }
-            } catch (_error) {
-                const ngos = JSON.parse(localStorage.getItem('ngos') || '[]')
-                const userNgo = ngos.find((ngo: any) =>
-                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userNgo) {
-                    setHasAlreadyApplied(true)
-                    setExistingNgoData(userNgo)
-                } else {
-                    setHasAlreadyApplied(false)
-                    setExistingNgoData(null)
-                }
-            } finally {
-                setIsLoadingApplication(false)
-========
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
                     console.error('Error checking API for NGO application:', error)
                 }
             }
-            
-            
+
             const ngos = getStorageJson<any[]>('ngos', [])
-           
-            const userNgo = ngos.find((ngo: any) => 
+
+            const userNgo = ngos.find((ngo: any) =>
                 ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
                 ngo.walletAddress?.toLowerCase() === address.toLowerCase()
             )
-            
+
             if (userNgo) {
                 setHasAlreadyApplied(true)
                 setExistingNgoData(userNgo)
             } else {
                 setHasAlreadyApplied(false)
                 setExistingNgoData(null)
->>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
+            setIsLoadingApplication(false)
         }
         checkExistingApplication()
     }, [address, isConnected])
@@ -347,20 +314,12 @@ const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false)
             }
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
-                console.log('NGO application saved to Firebase')
-========
                 console.log('NGO application saved to API')
->>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
         } catch (error) {
             if (import.meta.env.DEV) {
                 // eslint-disable-next-line no-console
-<<<<<<<< HEAD:apps/web/src/pages/BecomeanNgo.tsx
-                console.error('Error saving NGO application to Firebase:', error)
-========
                 console.error('Error saving NGO application to API:', error)
->>>>>>>> frontend:apps/web/src/public/pages/BecomeanNgo.tsx
             }
             setToast({ msg: 'Failed to save NGO application.', type: 'error' })
         }

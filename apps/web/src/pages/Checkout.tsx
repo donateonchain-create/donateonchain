@@ -5,14 +5,15 @@ import { ChevronDown, X } from 'lucide-react'
 import Header from "../component/Header"
 import Footer from "../component/Footer"
 import Button from "../component/Button"
+import KycModal from '../component/KycModal'
 import { useCart } from '../context/CartContext'
 import { products } from '../data/databank'
 import { useAccount } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
 import { getAllGlobalDesigns } from '../utils/storageApi'
-import { getDesignPrice, batchPurchaseDesignsPayable } from '../onchain/adapter'
+import { getDesignPrice, batchPurchaseDesignsPayable, isKycVerifiedOnChain } from '../onchain/adapter'
 import { SkeletonCheckoutOverview } from '../component/Skeleton'
-import { createDonation, createOrder } from '../api'
+import { createDonation, createOrder, getKycVerifications } from '../api'
 import { getStorageJson } from '../utils/safeStorage'
 import { isHashPackInstalled, getHashPackDownloadUrl } from '../utils/walletDetection'
 
@@ -27,6 +28,7 @@ const Checkout = () => {
     const [connectIntentPaymentMethod, setConnectIntentPaymentMethod] = useState<string | null>(null)
     const [checkoutError, setCheckoutError] = useState<string | null>(null)
     const [showOwnDesignError, setShowOwnDesignError] = useState(false)
+    const [isKycModalOpen, setIsKycModalOpen] = useState(false)
     const [formData, setFormData] = useState({
         email: '', firstName: '', lastName: '', country: 'Nigeria', city: '', address: '', paymentMethod: ''
     })
@@ -128,10 +130,7 @@ const Checkout = () => {
         open({ view: 'Connect' })
     }
 
-    const handleCheckout = async () => {
-        if (!isFormValid()) return
-        if (!isConnected) { setShowConnectWalletModal(true); return }
-        if (checkIfOwnDesign()) { setShowOwnDesignError(true); return }
+    const performCheckout = async () => {
         setIsProcessing(true)
         if (!address) { setIsProcessing(false); return }
 
@@ -187,6 +186,29 @@ const Checkout = () => {
         } finally {
             setIsProcessing(false)
         }
+    }
+
+    const handleCheckout = async () => {
+        if (!isFormValid()) return
+        if (!isConnected) { setShowConnectWalletModal(true); return }
+        if (checkIfOwnDesign()) { setShowOwnDesignError(true); return }
+        if (!address) return
+
+        setCheckoutError(null)
+        try {
+            const kyc = await getKycVerifications({ walletAddress: address, page: 1, limit: 1 })
+            const latest = kyc.items?.[0]
+            const isOnChainKyc = await isKycVerifiedOnChain(address as `0x${string}`)
+            if (latest?.status !== 'approved' || !isOnChainKyc) {
+                setIsKycModalOpen(true)
+                return
+            }
+        } catch {
+            setCheckoutError('Unable to verify KYC status. Please try again.')
+            return
+        }
+
+        await performCheckout()
     }
 
     const handleCloseModal = () => { setShowSuccessModal(false); navigate('/') }
@@ -351,6 +373,15 @@ const Checkout = () => {
                     </div>
                 </div>
             )}
+            <KycModal
+                isOpen={isKycModalOpen}
+                walletAddress={address}
+                onClose={() => setIsKycModalOpen(false)}
+                onApproved={async () => {
+                    setIsKycModalOpen(false)
+                    await performCheckout()
+                }}
+            />
             <Footer />
         </div>
     )

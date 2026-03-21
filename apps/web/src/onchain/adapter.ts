@@ -36,6 +36,19 @@ export async function getUserRoles(user: HexAddress): Promise<UserRoles> {
   return { isAdmin, isNgo: !!isKyc, isDesigner: !!isKyc }
 }
 
+export async function isKycVerifiedOnChain(wallet: HexAddress): Promise<boolean> {
+  try {
+    return await read<boolean>({
+      address: CONTRACT,
+      abi: ABI,
+      functionName: 'isKycVerified',
+      args: [wallet],
+    })
+  } catch {
+    return false
+  }
+}
+
 export async function listCampaigns(): Promise<Campaign[]> {
   const result = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getActiveCampaignsPaginated', args: [0n, 100n] }).catch(() => [{ campaignIds: [], total: 0n }])
   const campaignIds = Array.isArray(result) ? (result[0] ?? []) : (result?.campaignIds ?? [])

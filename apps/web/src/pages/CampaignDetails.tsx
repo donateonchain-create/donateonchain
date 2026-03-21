@@ -8,11 +8,12 @@ import Banner from '../component/Banner'
 import CampaignCard from '../component/CampaignCard'
 import Button from '../component/Button'
 import EditCampaignModal from '../component/EditCampaignModal'
+import KycModal from '../component/KycModal'
 import { Loader2, Check, Gift, Trash } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
-import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain } from '../onchain/adapter'
+import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain, isKycVerifiedOnChain } from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
-import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation, mintDonationNFT } from '../api'
+import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation, mintDonationNFT, getKycVerifications } from '../api'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -45,6 +46,7 @@ const CampaignDetails = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isUploadingCampaign, setIsUploadingCampaign] = useState(false)
     const [isCampaignUpdated, setIsCampaignUpdated] = useState(false)
+    const [isKycModalOpen, setIsKycModalOpen] = useState(false)
     const queryClient = useQueryClient()
     const { data: campaign, isLoading: isCampaignLoading } = useQuery({
         queryKey: ['campaign', id],
@@ -192,7 +194,7 @@ const CampaignDetails = () => {
         )
     }
 
-    const handleDonate = async () => {
+    const performDonation = async () => {
         if (!donationAmount.trim() || !isConnected) return
         const value = parseFloat(donationAmount)
         if (Number.isNaN(value) || value <= 0) {
@@ -263,6 +265,28 @@ const CampaignDetails = () => {
         } finally {
             setIsDonating(false)
         }
+    }
+
+    const handleDonate = async () => {
+        if (!isConnected || !address) return
+        const value = parseFloat(donationAmount)
+        if (!donationAmount.trim() || Number.isNaN(value) || value <= 0) {
+            setDonationError('Please enter a valid amount')
+            return
+        }
+        try {
+            const kyc = await getKycVerifications({ walletAddress: address, page: 1, limit: 1 })
+            const latest = kyc.items?.[0]
+            const isOnChainKyc = await isKycVerifiedOnChain(address as `0x${string}`)
+            if (latest?.status !== 'approved' || !isOnChainKyc) {
+                setIsKycModalOpen(true)
+                return
+            }
+        } catch {
+            setDonationError('Unable to verify KYC status. Please try again.')
+            return
+        }
+        await performDonation()
     }
 
     return (
@@ -610,6 +634,15 @@ const CampaignDetails = () => {
                     </div>
                 </div>
             )}
+            <KycModal
+                isOpen={isKycModalOpen}
+                walletAddress={address}
+                onClose={() => setIsKycModalOpen(false)}
+                onApproved={async () => {
+                    setIsKycModalOpen(false)
+                    await performDonation()
+                }}
+            />
         </div>
     )
 }
