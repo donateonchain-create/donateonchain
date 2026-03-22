@@ -1,4 +1,5 @@
 import React from 'react'
+import { formatCampaignPercentLabel } from '../utils/hbar'
 
 type CampaignCardProps = {
     image: string
@@ -23,6 +24,11 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     className = "",
     onClick
 }) => {
+    const rawPct = Number(percentage)
+    const safePct = Number.isFinite(rawPct) ? Math.max(0, rawPct) : 0
+    const barWidth = Math.min(100, safePct)
+    const percentLabel = formatCampaignPercentLabel(safePct)
+
     return (
         <div
             className={`bg-white rounded-3xl overflow-hidden hover:border hover:border-black/10 transition-colors cursor-pointer group ${className}`}
@@ -56,18 +62,20 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
                 <div className="relative h-12 rounded-full overflow-hidden bg-white border-2 border-gray-300">
 
                     <div
-                        className="absolute inset-0 bg-[#4ADE80] rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
+                        className="absolute left-0 top-0 h-full bg-[#4ADE80] rounded-full transition-all duration-500 min-w-0 max-w-full"
+                        style={{ width: `${barWidth}%` }}
                     >
 
-                        <div className="absolute left-0 top-0 h-full flex items-center px-4 min-w-fit">
-                            <span className="text-[16px] font-semibold text-black whitespace-nowrap">{amountRaised}</span>
+                        <div className="absolute left-0 top-0 h-full flex items-center px-4 min-w-0 max-w-full overflow-hidden">
+                            <span className="text-[16px] font-semibold text-black truncate">{amountRaised}</span>
                         </div>
                     </div>
 
 
-                    <div className="absolute right-4 top-0 h-full flex items-center z-10">
-                        <span className="text-[16px] font-semibold text-black">{percentage}%</span>
+                    <div className="absolute right-3 top-0 h-full flex items-center z-10 pointer-events-none">
+                        <span className="text-[16px] font-semibold text-black tabular-nums rounded-md bg-white/90 px-1.5 py-0.5 shadow-sm">
+                            {percentLabel}
+                        </span>
                     </div>
                 </div>
 

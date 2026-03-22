@@ -2,7 +2,8 @@ import { abis, addresses, roles } from './contracts'
 import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
 import { getIPFSURL } from '../utils/ipfs'
-import { keccak256, stringToHex, decodeEventLog } from 'viem'
+import { keccak256, stringToHex, decodeEventLog, decodeErrorResult, formatUnits } from 'viem'
+import { formatHbarDisplay } from '../utils/hbar'
 
 const CONTRACT = addresses.DONATE_ON_CHAIN as HexAddress
 const ABI = abis.DonateOnChain as any
@@ -94,23 +95,34 @@ export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number;
 
 export async function listAllCampaignsFromChain(): Promise<any[]> {
   try {
-    const activeIds = await listActiveCampaignIds()
+    const countBn = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'campaignCount', args: [] }).catch(() => 0n)
+    const total = Number(countBn)
+    if (!Number.isFinite(total) || total <= 0) return []
+
     const campaigns: any[] = []
 
-    for (const id of activeIds) {
+    for (let i = 0; i < total; i++) {
+      const id = BigInt(i)
       try {
         const chainCampaign = await getCampaign(id)
+        const st = chainCampaign.state ?? CampaignState.Pending_Vetting
+        if (st !== CampaignState.Pending_Vetting && st !== CampaignState.Active) {
+          continue
+        }
+
         let amountRaised = 0
         try {
           const donations = await getDonationsByCampaign(id)
           amountRaised = donations.totalRaisedHBAR
-        } catch { }
+        } catch {
+          //
+        }
 
         let title = chainCampaign.title || ''
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = Number(chainCampaign.goalHBAR) / 1e18 // convert weibars → HBAR
+        let target = Number(chainCampaign.goalHBAR) / 1e18
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
           image = getIPFSURL(chainCampaign.image)
@@ -129,27 +141,28 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
           designer: chainCampaign.designer,
           image,
           active: chainCampaign.active ?? true,
+          vettingPending: st === CampaignState.Pending_Vetting,
+          campaignState: st,
           createdAt: Date.now(),
         })
       } catch (e) {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
-          console.warn(`Failed to load campaign ${id}:`, e)
+          console.warn(`Failed to load campaign ${i}:`, e)
         }
-        continue
       }
     }
 
     for (const campaign of campaigns) {
-      const target = campaign.target || 0
-      campaign.percentage = target > 0 ? (campaign.amountRaised / target) * 100 : 0
+      const t = campaign.target || 0
+      campaign.percentage = t > 0 ? (campaign.amountRaised / t) * 100 : 0
     }
 
     return campaigns
   } catch (error) {
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
-      console.error('Error listing active campaigns from chain:', error)
+      console.error('Error listing campaigns from chain:', error)
     }
     return []
   }
@@ -342,7 +355,7 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
   }
 }
 
-export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean }> {
+export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean; state?: number }> {
   const c = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [id] })
   const state = typeof c?.state === 'number' ? c.state : c?.[11] ?? 0
   const active = state === CampaignState.Active
@@ -350,6 +363,9 @@ export async function getCampaign(id: bigint): Promise<Campaign & { active?: boo
   if (image && (String(image).startsWith('Qm') || String(image).startsWith('baf'))) {
     image = getIPFSURL(String(image))
   }
+  const deadlineRaw = c?.deadline ?? c?.[7]
+  const deadline =
+    deadlineRaw !== undefined && deadlineRaw !== null ? BigInt(deadlineRaw) : undefined
   return {
     id: BigInt(id),
     title: c?.title ?? c?.[2] ?? '',
@@ -359,6 +375,8 @@ export async function getCampaign(id: bigint): Promise<Campaign & { active?: boo
     designer: (c?.designer ?? c?.[1]) as HexAddress | undefined,
     image: image || undefined,
     active,
+    state,
+    ...(deadline !== undefined && deadline > 0n ? { deadline } : {}),
   }
 }
 
@@ -397,6 +415,7 @@ export async function createCampaignByNGO(params: {
   imageCid: string
   metadataCid: string
   targetHBAR: number
+  deadlineUnixSeconds?: number
   ngoBps?: number
   designerBps?: number
   platformBps?: number
@@ -406,7 +425,13 @@ export async function createCampaignByNGO(params: {
   const platformBps = params.platformBps ?? 1000
   const metadataHash = keccak256(stringToHex(params.metadataCid))
   const targetWei = toWei(params.targetHBAR)
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60)
+  const nowSec = Math.floor(Date.now() / 1000)
+  const fallbackDeadline = nowSec + 90 * 24 * 60 * 60
+  const chosen =
+    params.deadlineUnixSeconds != null && Number.isFinite(params.deadlineUnixSeconds)
+      ? Math.floor(params.deadlineUnixSeconds)
+      : fallbackDeadline
+  const deadline = BigInt(Math.max(nowSec + 3600, chosen))
 
   const campaignCountBefore = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'campaignCount', args: [] }).catch(() => 0n)
 
@@ -512,6 +537,20 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
     return await wait(hash)
   } catch (error: any) {
     const errorData = error?.data || error?.cause?.data || error?.reason
+    if (typeof errorData === 'string' && errorData.startsWith('0x') && errorData.length >= 10) {
+      try {
+        const decoded = decodeErrorResult({ abi: ABI, data: errorData as `0x${string}` })
+        if (decoded.errorName === 'DonationExceedsRemaining') {
+          const remainingWei = decoded.args[0] as bigint
+          const remHbar = formatHbarDisplay(Number(formatUnits(remainingWei, 18)))
+          throw new Error(
+            `This amount exceeds what is left to reach the campaign target. You can donate up to ${remHbar} HBAR more.`
+          )
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('exceeds what is left')) throw e
+      }
+    }
     const errorSignature = typeof errorData === 'string' && errorData.startsWith('0x') ? errorData.slice(0, 10) : null
 
     if (errorSignature) {

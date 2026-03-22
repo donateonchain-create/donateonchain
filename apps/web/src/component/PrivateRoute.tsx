@@ -1,21 +1,28 @@
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAccount } from 'wagmi'
 import { useAuth } from '../context/AuthContext'
 import { getKycVerifications } from '../api'
 import KycModal from './KycModal'
 import { isKycVerifiedOnChain } from '../onchain/adapter'
+import { isNgoApplicationApproved } from '../utils/storageApi'
+import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
 
 interface PrivateRouteProps {
     children: React.ReactNode
     mode?: 'auth' | 'kyc'
+    requireNgoApproved?: boolean
 }
 
-const PrivateRoute = ({ children, mode = 'auth' }: PrivateRouteProps) => {
+const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false }: PrivateRouteProps) => {
     const { isConnected, status } = useAccount()
     const { isAuthenticated, isSigningIn, signIn } = useAuth()
     const location = useLocation()
+    const navigate = useNavigate()
     const { address } = useAccount()
+    const { data: ngoApplicationState, isLoading: isNgoApplicationLoading } = useNgoApplicationQuery({
+        enabled: requireNgoApproved,
+    })
     const { data: kycData, isLoading: isKycLoading, isError: isKycError, refetch: refetchKyc } = useQuery({
         queryKey: ['routeKyc', address],
         queryFn: () => getKycVerifications({ walletAddress: address, page: 1, limit: 1 }),
@@ -36,6 +43,22 @@ const PrivateRoute = ({ children, mode = 'auth' }: PrivateRouteProps) => {
 
     if (!isConnected) {
         return <Navigate to="/" replace state={{ from: location }} />
+    }
+
+    if (requireNgoApproved) {
+        if (isNgoApplicationLoading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <p style={{ color: '#666', fontSize: '1rem' }}>
+                        Checking NGO application…
+                    </p>
+                </div>
+            )
+        }
+        const ngoData = ngoApplicationState?.data ?? null
+        if (!ngoApplicationState?.hasApplied || !isNgoApplicationApproved(ngoData)) {
+            return <Navigate to="/become-an-ngo" replace state={{ from: location }} />
+        }
     }
 
     if (mode === 'kyc') {
@@ -71,7 +94,7 @@ const PrivateRoute = ({ children, mode = 'auth' }: PrivateRouteProps) => {
                     <KycModal
                         isOpen
                         walletAddress={address}
-                        onClose={() => {}}
+                        onClose={() => navigate('/')}
                         onApproved={async () => {
                             await refetchKyc()
                             await refetchOnChainKyc()

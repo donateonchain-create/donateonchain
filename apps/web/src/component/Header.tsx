@@ -8,14 +8,24 @@ import DonateLogo from '../assets/DonateLogo.png'
 import { useCart } from '../context/CartContext'
 import { addresses, abis } from '../onchain/contracts'
 import { read as readOnchain } from '../onchain/client'
-import { products, campaigns, causes, creators } from '../data/databank'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { listAllCampaignsFromChain } from '../onchain/adapter'
 import { useAppKit } from '@reown/appkit/react'
 import { useAccount, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
 import { hederaTestnet, hederaMainnet } from '../config/reownConfig'
 import { getStorageJson } from '../utils/safeStorage'
-import { getUserRoles } from '../onchain/adapter'
+import { isNgoApplicationApproved } from '../utils/storageApi'
+import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
+import { computeCampaignPercent, formatCampaignPercentLabel, formatHbarDisplay } from '../utils/hbar'
+
+const formatSearchDesignPrice = (raw: unknown): string => {
+    if (raw == null || raw === '') return ''
+    const s = String(raw).trim()
+    if (s.includes('HBAR')) return s
+    const n = Number(String(s).replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(n) || n <= 0) return s
+    return `${formatHbarDisplay(n)} HBAR`
+}
 
 const Header = () => {
     const navigate = useNavigate()
@@ -33,17 +43,8 @@ const Header = () => {
     const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [searchResults, setSearchResults] = useState<any[]>([])
-    const { data: isNgo = false } = useQuery({
-        queryKey: ['userRole', address, isConnected],
-        queryFn: async () => {
-            if (address && isConnected) {
-                const roles = await getUserRoles(address as `0x${string}`);
-                return roles.isNgo;
-            }
-            return false;
-        },
-        enabled: !!address && isConnected
-    });
+    const { data: ngoApplicationState } = useNgoApplicationQuery()
+    const ngoApplicationApproved = isNgoApplicationApproved(ngoApplicationState?.data ?? null)
 
     const { data: realCampaigns = [] } = useQuery({
         queryKey: ['headerCampaigns'],
@@ -114,48 +115,18 @@ const Header = () => {
         
         const searchTerm = query.toLowerCase()
 
-        const productSource = realDesigns.length > 0 ? realDesigns : products
-        const productResults = (realDesigns.length > 0
-            ? productSource.filter((d: any) =>
-                (d.pieceName || '').toLowerCase().includes(searchTerm) ||
-                (d.description || '').toLowerCase().includes(searchTerm) ||
-                (d.type || '').toLowerCase().includes(searchTerm)
-            ).map((d: any) => ({ ...d, title: d.pieceName || d.title, type: 'product' }))
-            : products.filter(product =>
-                product.title.toLowerCase().includes(searchTerm) ||
-                product.creator.toLowerCase().includes(searchTerm) ||
-                product.category.toLowerCase().includes(searchTerm) ||
-                product.description.toLowerCase().includes(searchTerm)
-            ).map(p => ({ ...p, type: 'product' }))
-        )
+        const productResults = realDesigns.filter((d: any) =>
+            (d.pieceName || '').toLowerCase().includes(searchTerm) ||
+            (d.description || '').toLowerCase().includes(searchTerm) ||
+            (d.type || '').toLowerCase().includes(searchTerm)
+        ).map((d: any) => ({ ...d, title: d.pieceName || d.title, type: 'product' }))
 
-        const campaignSource = realCampaigns.length > 0 ? realCampaigns : campaigns
-        const campaignResults = (realCampaigns.length > 0
-            ? campaignSource.filter((c: any) =>
-                (c.title || '').toLowerCase().includes(searchTerm) ||
-                (c.category || '').toLowerCase().includes(searchTerm) ||
-                (c.description || c.about || '').toLowerCase().includes(searchTerm)
-            ).map((c: any) => ({ ...c, type: 'campaign' }))
-            : campaigns.filter(campaign =>
-                campaign.title.toLowerCase().includes(searchTerm) ||
-                campaign.category.toLowerCase().includes(searchTerm) ||
-                campaign.about.toLowerCase().includes(searchTerm)
-            ).map(c => ({ ...c, type: 'campaign' }))
-        )
-        
-      
-        const causeResults = causes.filter(cause => 
-            cause.title.toLowerCase().includes(searchTerm) ||
-            cause.organization.toLowerCase().includes(searchTerm)
-        ).map(c => ({ ...c, type: 'cause' }))
-        
-     
-        const creatorResults = creators.filter(creator => 
-            creator.name.toLowerCase().includes(searchTerm) ||
-            creator.role.toLowerCase().includes(searchTerm)
-        ).map(c => ({ ...c, type: 'creator' }))
-        
-       
+        const campaignResults = realCampaigns.filter((c: any) =>
+            (c.title || '').toLowerCase().includes(searchTerm) ||
+            (c.category || '').toLowerCase().includes(searchTerm) ||
+            (c.description || c.about || '').toLowerCase().includes(searchTerm)
+        ).map((c: any) => ({ ...c, type: 'campaign' }))
+
         const userDesigns = getStorageJson<any[]>('userDesigns', [])
         const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
         const allDesigns = [...userDesigns, ...ngoDesigns]
@@ -167,7 +138,7 @@ const Header = () => {
             design.type?.toLowerCase().includes(searchTerm)
         ).map((d: any) => ({ ...d, type: 'design' }))
         
-        const allResults = [...productResults, ...campaignResults, ...causeResults, ...creatorResults, ...designResults]
+        const allResults = [...productResults, ...campaignResults, ...designResults]
         setSearchResults(allResults)
     }
 
@@ -182,7 +153,7 @@ const Header = () => {
                 navigate(`/product/${item.id}`)
                 break
             case 'campaign':
-                navigate(`/campaign/${item.id}`)
+                navigate(`/campaign/${item.onchainId ?? item.id}`)
                 break
             case 'design':
                 navigate(`/product/${item.id}`)
@@ -290,7 +261,7 @@ const Header = () => {
                     >
                         Campaigns
                     </button>
-                    {!isNgo && (
+                    {!ngoApplicationApproved && (
                     <button 
                         className={`inline-flex items-center gap-[6px] text-base text-black bg-transparent pb-1 cursor-pointer hover:opacity-80 border-b-2 transition-colors ${activeNav==='Customize' ? 'border-black' : 'border-transparent hover:border-black'}`}
                         onClick={() => { setActiveNav('Customize'); setIsShopOpen(false); navigate('/become-an-ngo'); }}
@@ -485,15 +456,37 @@ const Header = () => {
                                         {item.campaign && (
                                             <p className="text-sm text-gray-500">Campaign: {item.campaign}</p>
                                         )}
-                                        {(item.category || item.categoryType) && (
+                                        {(item.category || item.categoryType) && item.type !== 'campaign' && (
                                             <p className="text-sm text-gray-500">{item.category || item.categoryType}</p>
                                         )}
                                     </div>
-                                    {(item.price || item.amountRaised) && (
-                                        <div className="text-right">
-                                            <p className="font-medium text-black">{item.price || item.amountRaised}</p>
+                                    {item.type === 'campaign' ? (
+                                        <div className="text-right shrink-0 min-w-[6.5rem]">
+                                            <p className="text-sm font-semibold text-black tabular-nums">
+                                                {formatCampaignPercentLabel(
+                                                    computeCampaignPercent(
+                                                        Number(item.amountRaised ?? 0),
+                                                        Number(item.target ?? 0)
+                                                    )
+                                                )}
+                                            </p>
+                                            <p className="text-[11px] text-gray-600 tabular-nums leading-tight mt-0.5">
+                                                {formatHbarDisplay(Number(item.amountRaised ?? 0))} /{' '}
+                                                {Number(item.target ?? 0) > 0
+                                                    ? formatHbarDisplay(Number(item.target))
+                                                    : '—'}{' '}
+                                                HBAR
+                                            </p>
                                         </div>
-                                    )}
+                                    ) : (item.price || item.amountRaised) ? (
+                                        <div className="text-right shrink-0 min-w-[5rem]">
+                                            <p className="font-medium text-black tabular-nums">
+                                                {item.type === 'product' || item.type === 'design'
+                                                    ? formatSearchDesignPrice(item.price ?? item.amountRaised)
+                                                    : item.price || item.amountRaised}
+                                            </p>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ))}
                         </div>
@@ -581,7 +574,7 @@ const Header = () => {
                                     
                                 </button>
                             </li>
-                            {!isNgo && (
+                            {!ngoApplicationApproved && (
                             <li>
                                 <button className="w-full flex items-center justify-between py-5" onClick={() => { setIsMobileMenuOpen(false); setActiveNav('Customize'); navigate('/become-an-ngo'); }}>
                                     <span>Become an NGO</span>

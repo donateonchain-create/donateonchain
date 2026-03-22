@@ -524,21 +524,110 @@ export const getNgoApplications = async () => {
 
 export const getNgoApplicationByWallet = async (walletAddress: string, signature?: string, timestamp?: string) => {
   try {
-    const headers: any = {};
+    const headers: Record<string, string> = {}
     if (signature && timestamp) {
-      headers['x-wallet-signature'] = signature;
-      headers['x-wallet-timestamp'] = timestamp;
+      headers['x-wallet-signature'] = signature
+      headers['x-wallet-timestamp'] = timestamp
     } else {
-      Object.assign(headers, getAuthHeaders());
+      Object.assign(headers, getAuthHeaders())
     }
-    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications/${walletAddress}`, {
-      headers
-    }).then(r => r.json());
-    return fromApi.error ? null : fromApi;
+    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications/${walletAddress}`, {
+      headers,
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || (json && json.error)) return null
+    return json
   } catch (error) {
-    if (import.meta.env.DEV) console.error('Error getting NGO application:', error);
-    return null;
+    if (import.meta.env.DEV) console.error('Error getting NGO application:', error)
+    return null
   }
+}
+
+const NGO_APP_LOCAL_KEY = 'donateonchain_ngo_application'
+
+export function persistNgoApplicationLocal(walletAddress: string, data: Record<string, unknown>) {
+  try {
+    localStorage.setItem(
+      `${NGO_APP_LOCAL_KEY}_${walletAddress.toLowerCase()}`,
+      JSON.stringify({ ...data, walletAddress: walletAddress.toLowerCase() })
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readNgoApplicationLocal(walletAddress: string): any | null {
+  try {
+    const raw = localStorage.getItem(`${NGO_APP_LOCAL_KEY}_${walletAddress.toLowerCase()}`)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function clearNgoApplicationLocal(walletAddress: string) {
+  try {
+    localStorage.removeItem(`${NGO_APP_LOCAL_KEY}_${walletAddress.toLowerCase()}`)
+  } catch {
+    /* ignore */
+  }
+}
+
+type SignMessageFn = (args: { message: string }) => Promise<`0x${string}`>
+
+export async function fetchNgoApplicationState(
+  walletAddress: string,
+  signMessageAsync?: SignMessageFn
+): Promise<{ hasApplied: boolean; data: any | null }> {
+  if (!walletAddress) return { hasApplied: false, data: null }
+
+  if (signMessageAsync) {
+    try {
+      const ts = Date.now().toString()
+      const message = `DonateOnChain:ngo_application_read:${ts}`
+      const signature = await signMessageAsync({ message })
+      const existingApplication = await getNgoApplicationByWallet(walletAddress, signature, ts)
+      if (existingApplication) {
+        persistNgoApplicationLocal(walletAddress, existingApplication as Record<string, unknown>)
+        return { hasApplied: true, data: existingApplication }
+      }
+    } catch {
+      /* fall through to local */
+    }
+  }
+
+  const local = readNgoApplicationLocal(walletAddress)
+  if (local) {
+    return {
+      hasApplied: true,
+      data: { ...local, status: local.status ?? 'pending' },
+    }
+  }
+
+  try {
+    const existingApplication = await getNgoApplicationByWallet(walletAddress)
+    if (existingApplication) {
+      persistNgoApplicationLocal(walletAddress, existingApplication as Record<string, unknown>)
+      return { hasApplied: true, data: existingApplication }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  const ngos = getStorageJson<any[]>('ngos', [])
+  const userNgo = ngos.find(
+    (ngo: any) =>
+      ngo.connectedWalletAddress?.toLowerCase() === walletAddress.toLowerCase() ||
+      ngo.walletAddress?.toLowerCase() === walletAddress.toLowerCase()
+  )
+  if (userNgo) return { hasApplied: true, data: userNgo }
+  return { hasApplied: false, data: null }
+}
+
+export function isNgoApplicationApproved(data: any | null | undefined): boolean {
+  if (!data) return false
+  return data.status === 'approved'
 }
 
 export const deleteNgoApplication = async (walletAddress: string) => {

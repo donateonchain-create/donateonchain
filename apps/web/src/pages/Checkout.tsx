@@ -7,11 +7,10 @@ import Footer from "../component/Footer"
 import Button from "../component/Button"
 import KycModal from '../component/KycModal'
 import { useCart } from '../context/CartContext'
-import { products } from '../data/databank'
 import { useAccount } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
 import { getAllGlobalDesigns } from '../utils/storageApi'
-import { getDesignPrice, batchPurchaseDesignsPayable, isKycVerifiedOnChain } from '../onchain/adapter'
+import { getDesignPrice, batchPurchaseDesignsPayable, isKycVerifiedOnChain, listDesigns } from '../onchain/adapter'
 import { SkeletonCheckoutOverview } from '../component/Skeleton'
 import { createDonation, createOrder, getKycVerifications } from '../api'
 import { getStorageJson } from '../utils/safeStorage'
@@ -38,11 +37,23 @@ const Checkout = () => {
         queryFn: async () => {
             try {
                 const storedDesigns = await getAllGlobalDesigns();
+                let chainDesigns: any[] = []
+                try {
+                    const onchain = await listDesigns()
+                    chainDesigns = onchain.map((d) => ({
+                        id: Number(d.id),
+                        pieceName: d.title,
+                        frontDesign: {},
+                        price: `${Number(d.priceHBAR) / 1e18}`,
+                        type: 'shirt',
+                        createdAt: Date.now(),
+                    }))
+                } catch {}
                 const userDesigns = getStorageJson<any[]>('userDesigns', [])
                 const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
-                const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
+                const allDesigns = [...chainDesigns, ...storedDesigns, ...userDesigns, ...ngoDesigns];
                 return Array.from(new Map(allDesigns.map(design => [design.id, design])).values());
-            } catch (error) {
+            } catch {
                 const userDesigns = getStorageJson<any[]>('userDesigns', [])
                 const ngoDesigns = getStorageJson<any[]>('ngoDesigns', [])
                 return [...userDesigns, ...ngoDesigns]
@@ -51,10 +62,7 @@ const Checkout = () => {
     })
 
     const getProductById = (id: number) => {
-        const customDesign = customDesigns.find((design: any) => design.id === id)
-        if (customDesign) return customDesign
-        const regularProduct = products.find(product => product.id === id)
-        return regularProduct
+        return customDesigns.find((design: any) => design.id === id)
     }
 
     const checkIfOwnDesign = () => {

@@ -9,7 +9,6 @@ import FilterButton from '../component/FilterButton'
 import { SkeletonCard } from '../component/Skeleton'
 import ShopImg from '../assets/ShopImg.png'
 import { Filter, ChevronDown } from 'lucide-react'
-import { products } from '../data/databank'
 import { getStorageJson } from '../utils/safeStorage'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { listDesigns } from '../onchain/adapter'
@@ -80,7 +79,7 @@ const Shop = () => {
                     const bTime = new Date(b.design?.createdAt || 0).getTime()
                     return bTime - aTime
                 });
-                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
+                const combinedItems = sortedDesigns;
                 setAllItems(combinedItems);
                 setFilteredProducts(combinedItems);
                 return combinedItems;
@@ -109,7 +108,7 @@ const Shop = () => {
                     const bTime = new Date(b.design?.createdAt || 0).getTime()
                     return bTime - aTime
                 });
-                const combinedItems = sortedDesigns.length > 0 ? sortedDesigns : products;
+                const combinedItems = sortedDesigns;
                 setAllItems(combinedItems);
                 setFilteredProducts(combinedItems);
                 return combinedItems;

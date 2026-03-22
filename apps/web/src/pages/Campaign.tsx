@@ -11,6 +11,7 @@ import ShopImg from '../assets/ShopImg.png'
 import { ChevronDown } from 'lucide-react'
 import { listAllCampaignsFromChain } from '../onchain/adapter'
 import { getCampaigns } from '../api'
+import { computeCampaignPercent, mergeCampaignRaisedHBAR, normalizeCampaignAmounts, weiToHbar } from '../utils/hbar'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -42,7 +43,7 @@ const Campaign = () => {
         queryKey: ['campaigns_all'],
         queryFn: async () => {
             try {
-                const cacheKey = 'campaigns_all'
+                const cacheKey = 'campaigns_all_v2'
                 const cached = getCache(cacheKey)
                 if (cached) {
                     setAllCampaigns(cached)
@@ -56,17 +57,23 @@ const Campaign = () => {
                 const backendById = new Map(apiResult.items.map((c: any) => [c.id, c]))
                 const withPercent = onchain.map((c: any) => {
                     const backend = backendById.get(String(c.onchainId ?? c.id)) as any
-                    const target = Number(c.target) || (backend ? Number(backend.targetAmount) : 0) || 0
-                    const raised = backend
-                        ? Number(backend.raisedAmount ?? 0)
-                        : Number(c.amountRaised) || 0
-                    const percentage = target > 0 ? (raised / target) * 100 : 0
+                    const target =
+                        Number(c.target) ||
+                        (backend?.targetAmount ? weiToHbar(backend.targetAmount) : 0) ||
+                        0
+                    const chainRaised = Number(c.amountRaised) || 0
+                    const raised = mergeCampaignRaisedHBAR(chainRaised, backend || undefined)
                     const category = (c.category || '')
                         .toString()
                         .trim()
                         .toLowerCase()
                         .replace(/\s+/g, '-')
-                    return { ...c, category, target, amountRaised: raised, percentage }
+                    return normalizeCampaignAmounts({
+                        ...c,
+                        category,
+                        target,
+                        amountRaised: raised,
+                    })
                 })
                 setAllCampaigns(withPercent)
                 setFilteredCampaigns(withPercent)
@@ -213,7 +220,7 @@ const Campaign = () => {
                              const campaignTitle = campaign.title || campaign.name
                              const target = Number(campaign.target || 0)
                              const amountRaised = Number(campaign.amountRaised || 0)
-                             const percentage = campaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0)
+                             const percentage = computeCampaignPercent(amountRaised, target)
                              
                              return (
                                  <CampaignCard

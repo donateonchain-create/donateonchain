@@ -193,6 +193,7 @@ contract DonateOnChain is
     error InvalidPageSize(uint256 size, uint256 maximum);
     error InsufficientCampaignBalance(uint256 campaignId, uint256 available, uint256 required);
     error CannotClaimFromFailedCampaign(uint256 campaignId);
+    error DonationExceedsRemaining(uint256 remaining, uint256 sent);
 
     // ============ Modifiers ============
 
@@ -466,6 +467,12 @@ contract DonateOnChain is
             revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Active);
         }
 
+        uint256 raisedBefore = campaignBalances[campaignId];
+        uint256 remainingToTarget = campaign.targetAmount > raisedBefore ? campaign.targetAmount - raisedBefore : 0;
+        if (msg.value > remainingToTarget) {
+            revert DonationExceedsRemaining(remainingToTarget, msg.value);
+        }
+
         // === EFFECTS ===
         uint256 donationId = donationCount++;
         uint256 nftSerialNumber = donationId; // Simplified for now, integrate with HTS
@@ -473,7 +480,6 @@ contract DonateOnChain is
         // Update cached total raised (prevents gas DoS in enableRefunds)
         campaign.totalRaised += msg.value;
 
-        // Check if goal reached using campaignBalances
         if (campaignBalances[campaignId] + msg.value >= campaign.targetAmount) {
             CampaignState oldState = campaign.state;
             campaign.state = CampaignState.Goal_Reached;

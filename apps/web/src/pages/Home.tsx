@@ -1,6 +1,5 @@
 import Header from "../component/Header";
 import Footer from "../component/Footer";
-import ProductCard from "../component/ProductCard";
 import CreatorCard from "../component/CreatorCard";
 import CampaignCard from "../component/CampaignCard";
 import { SkeletonCard, SkeletonCampaignCard } from "../component/Skeleton";
@@ -12,10 +11,12 @@ import BannerNft from "../assets/BannerNft.png";
 import { useNavigate } from 'react-router-dom';
 import { useAccount } from 'wagmi'
 import { useQuery } from '@tanstack/react-query';
-import { products, creators } from '../data/databank';
+import { useMemo } from 'react'
+import Creatorimg from '../assets/Creator.png'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getStorageJson } from '../utils/safeStorage'
 import { listAllCampaignsFromChain, getUserRoles } from '../onchain/adapter'
+import { computeCampaignPercent } from '../utils/hbar'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -60,12 +61,7 @@ const Home = () => {
                 const sortedDesigns = uniqueDesigns
                     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 
-                const userDesignsOnly = sortedDesigns.slice(0, 5);
-                const mockDesignsNeeded = 5 - userDesignsOnly.length;
-                return [
-                    ...userDesignsOnly,
-                    ...products.slice(0, mockDesignsNeeded)
-                ];
+                return sortedDesigns.slice(0, 10);
             } catch (error) {
                 if (import.meta.env.DEV) {
                     // eslint-disable-next-line no-console
@@ -80,12 +76,7 @@ const Home = () => {
                 const sortedDesigns = allDesigns
                     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 
-                const userDesignsOnly = sortedDesigns.slice(0, 5);
-                const mockDesignsNeeded = 5 - userDesignsOnly.length;
-                return [
-                    ...userDesignsOnly,
-                    ...products.slice(0, mockDesignsNeeded)
-                ];
+                return sortedDesigns.slice(0, 10);
             }
         }
     });
@@ -93,7 +84,7 @@ const Home = () => {
     const { data: popularCampaigns = [], isLoading: isLoadingCampaigns } = useQuery({
         queryKey: ['globalCampaigns'],
         queryFn: async () => {
-            const cacheKey = 'home_popular_campaigns';
+            const cacheKey = 'home_popular_campaigns_v2';
             const cached = getCache(cacheKey);
             if (cached) return cached;
 
@@ -114,8 +105,34 @@ const Home = () => {
         }
     });
 
-    const showcaseCreators = creators.slice(0, 6);
-    const shoeCollections = products.slice(0, 6);
+    const showcaseCreators = useMemo(() => {
+        const map = new Map<string, { id: string; image: string; name: string; role: string }>()
+        for (const d of popularDesigns as any[]) {
+            const w = d?.walletAddress || d?.connectedWalletAddress
+            if (typeof w === 'string' && w.length > 4) {
+                const k = w.toLowerCase()
+                if (!map.has(k)) {
+                    map.set(k, {
+                        id: k,
+                        image: Creatorimg,
+                        name: `${w.slice(0, 6)}…${w.slice(-4)}`,
+                        role: d?.isNgo ? 'NGO' : 'Designer',
+                    })
+                }
+            }
+        }
+        return Array.from(map.values()).slice(0, 6)
+    }, [popularDesigns])
+
+    const shoeCollections = useMemo(
+        () =>
+            (popularDesigns as any[]).filter((d) => {
+                const t = String(d?.type || d?.design?.type || '').toLowerCase()
+                return t.includes('shoe') || t.includes('footwear') || t.includes('sneaker')
+            }),
+        [popularDesigns]
+    )
+
     const isLoading = isLoadingDesigns || isLoadingCampaigns;
     const handleGetStarted = async () => {
         if (isConnected && address) {
@@ -183,11 +200,8 @@ const Home = () => {
           {isLoading ? (
             [...Array(5)].map((_, i) => <SkeletonCard key={i} />)
           ) : popularDesigns.length > 0 ? (
-            popularDesigns.map((item) => {
-            
-              if (item.pieceName || item.isDesign) {
-              
-                const design = item.isDesign ? item.design : item;
+            popularDesigns.slice(0, 5).map((item) => {
+                const design = (item as any).isDesign ? (item as any).design : item;
                 return (
                   <div 
                     key={item.id}
@@ -270,33 +284,11 @@ src="/shirtfront.png"
                     </div>
                   </div>
                 )
-              } else {
-               
-                return (
-                  <ProductCard
-                    key={item.id}
-                    image={item.image}
-                    title={item.title}
-                    creator={item.creator}
-                    price={item.price}
-                    alt={item.title}
-                    onClick={() => navigate(`/product/${item.id}`)}
-                  />
-                )
-              }
             })
           ) : (
-            products.slice(0, 5).map((product) => (
-              <ProductCard
-                key={product.id}
-                image={product.image}
-                title={product.title}
-                creator={product.creator}
-                price={product.price}
-                alt={product.title}
-                onClick={() => navigate(`/product/${product.id}`)}
-              />
-            ))
+            <p className="col-span-full text-center text-gray-500 py-8">
+              No designs yet. Browse the shop or create your own.
+            </p>
           )}
         </div>
       </section>
@@ -398,10 +390,10 @@ src="/shirtfront.png"
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           {isLoading ? (
             [...Array(5)].map((_, i) => <SkeletonCampaignCard key={i} />)
-          ) : popularCampaigns.map((campaign) => {
+          ) : popularCampaigns.map((campaign: Record<string, any>) => {
             const target = Number(campaign.target || 0)
             const amountRaised = Number(campaign.amountRaised || 0)
-            const percentage = campaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0)
+            const percentage = computeCampaignPercent(amountRaised, target)
             const imageUrl = campaign.image || campaign.coverImageFile
             
             return (
@@ -421,24 +413,85 @@ src="/shirtfront.png"
       </section>
 
       
+      {popularDesigns.length > 5 && (
       <section className="px-4 md:px-7 py-12">
         <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-8">
-          Special Collections
+          More designs
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-          {products.slice(0, 5).map((product) => (
-            <ProductCard
-              key={`special-${product.id}`}
-              image={product.image}
-              title={product.title}
-              creator={product.creator}
-              price={product.price}
-              alt={product.title}
-              onClick={() => navigate(`/product/${product.id}`)}
-            />
-          ))}
+          {popularDesigns.slice(5, 10).map((item) => {
+                const design = (item as any).isDesign ? (item as any).design : item;
+                return (
+                  <div 
+                    key={`more-${(item as any).id}`}
+                    className="bg-white rounded-3xl p-4 hover:border hover:border-black/10 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/product/${(item as any).id}`)}
+                  >
+                    <div className="rounded-2xl bg-[#eeeeee] mb-4">
+                      <div className="aspect-square rounded-xl overflow-hidden bg-[#eeeeee] flex items-center justify-center relative">
+                        <img 
+src="/shirtfront.png" 
+                          alt="" 
+                          className="absolute inset-0 w-full h-full object-cover rounded-xl"
+                          style={{ 
+                            filter: design.color === '#FFFFFF' ? 'none' : 
+                                   design.color === '#000000' ? 'brightness(0)' : 'none'
+                          }}
+                        />
+                        {design.frontDesign?.url && (
+                          <div 
+                            className="absolute"
+                            style={{ 
+                              width: '50%', 
+                              height: 'auto',
+                              maxWidth: '145px',
+                              maxHeight: '200px',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                          >
+                            <img 
+                              src={design.frontDesign.url} 
+                              alt="" 
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        )}
+                        {!design.frontDesign?.url && design.frontDesign?.dataUrl && (
+                          <div 
+                            className="absolute"
+                            style={{ 
+                              width: '50%', 
+                              height: 'auto',
+                              maxWidth: '145px',
+                              maxHeight: '200px',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                          >
+                            <img 
+                              src={design.frontDesign.dataUrl} 
+                              alt="" 
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-[22px] font-semibold leading-tight mb-1">
+                        {(item as any).pieceName || design.pieceName}
+                      </h3>
+                      <p className="text-[22px] font-semibold">{design.price} HBAR</p>
+                    </div>
+                  </div>
+                )
+          })}
         </div>
       </section>
+      )}
 
       
       <section className="px-4 md:px-8 py-12">
@@ -493,8 +546,9 @@ src="/shirtfront.png"
       
 
       
+      {showcaseCreators.length > 0 && (
       <section className="px-4 md:px-7 py-12">
-          <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-8">Check Out Your Creators</h2>
+          <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-8">Featured creators</h2>
            <div className="flex flex-wrap gap-6">
               {showcaseCreators.map((creator) => (
                 <CreatorCard
@@ -507,19 +561,16 @@ src="/shirtfront.png"
               ))}
           </div>
       </section>
+      )}
 
 
-      
+      {shoeCollections.length > 0 && (
        <section className="px-4 md:px-7 py-12">
         <h2 className="text-3xl md:text-5xl font-semibold tracking-tight mb-8">
-          Shoes Collections
+          Footwear
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-          {shoeCollections.map((item) => {
-           
-            if (item.pieceName && item.frontDesign) {
-             
-              return (
+          {shoeCollections.slice(0, 5).map((item: any) => (
                 <div 
                   key={`shoe-${item.id}`}
                   className="bg-white rounded-3xl p-4 hover:border hover:border-black/10 transition-colors cursor-pointer"
@@ -552,24 +603,10 @@ src="/shirtfront.png"
                     </p>
                   </div>
                 </div>
-              )
-            } else {
-
-              return (
-                <ProductCard
-                  key={`shoes-${item.id}`}
-                  image={item.image}
-                  title={item.title}
-                  creator={item.creator}
-                  price={item.price}
-                  alt={item.title}
-                  onClick={() => navigate(`/product/${item.id}`)}
-                />
-              )
-            }
-          })}
+          ))}
         </div>
       </section>
+      )}
 
       <Footer />
     </div>

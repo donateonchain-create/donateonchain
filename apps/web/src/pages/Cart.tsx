@@ -7,11 +7,10 @@ import Footer from "../component/Footer";
 import Banner from "../component/Banner";
 import Button from "../component/Button";
 import KycModal from '../component/KycModal'
-import { products } from "../data/databank";
 import { useCart } from "../context/CartContext";
 import { getStorageJson } from '../utils/safeStorage'
 import { getAllGlobalDesigns } from '../utils/storageApi'
-import { getDesignPrice, isKycVerifiedOnChain } from '../onchain/adapter';
+import { getDesignPrice, isKycVerifiedOnChain, listDesigns } from '../onchain/adapter';
 import { SkeletonCartRow } from '../component/Skeleton';
 import { getKycVerifications } from '../api'
 
@@ -27,14 +26,25 @@ const Cart = () => {
     queryFn: async () => {
       try {
         const storedDesigns = await getAllGlobalDesigns();
+        let chainDesigns: any[] = []
+        try {
+          const onchain = await listDesigns()
+          chainDesigns = onchain.map((d) => ({
+            id: Number(d.id),
+            pieceName: d.title,
+            frontDesign: {},
+            price: `${Number(d.priceHBAR) / 1e18}`,
+            type: 'shirt',
+            createdAt: Date.now(),
+          }))
+        } catch {}
         const userDesigns = getStorageJson<any[]>('userDesigns', []);
         const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
-        const allDesigns = [...storedDesigns, ...userDesigns, ...ngoDesigns];
-        const uniqueDesigns = Array.from(
+        const allDesigns = [...chainDesigns, ...storedDesigns, ...userDesigns, ...ngoDesigns];
+        return Array.from(
           new Map(allDesigns.map(design => [design.id, design])).values()
         );
-        return uniqueDesigns;
-      } catch (error) {
+      } catch {
         const userDesigns = getStorageJson<any[]>('userDesigns', []);
         const ngoDesigns = getStorageJson<any[]>('ngoDesigns', []);
         return [...userDesigns, ...ngoDesigns];
@@ -67,10 +77,7 @@ const Cart = () => {
 
 
   const getProductById = (id: number) => {
-    const customDesign = customDesigns.find((design) => design.id === id);
-    if (customDesign) return customDesign;
-    const regularProduct = products.find((product) => product.id === id);
-    return regularProduct;
+    return customDesigns.find((design) => design.id === id);
   };
 
   const calculateSubtotal = () => {

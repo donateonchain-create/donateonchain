@@ -50,7 +50,7 @@ const UserProfile = () => {
 
     // Create Campaign Modal State
     const [isCreateCampaignModalOpen, setIsCreateCampaignModalOpen] = useState(false);
-    const [isUploadingCampaign, setIsUploadingCampaign] = useState(false);
+    const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
     const [isCampaignCreatedSuccessfully, setIsCampaignCreatedSuccessfully] = useState(false);
     const [isCampaignCreateError, setIsCampaignCreateError] = useState(false);
     const [campaignErrorText, setCampaignErrorText] = useState('');
@@ -259,7 +259,7 @@ const UserProfile = () => {
     const handleCreateCampaign = async (campaignData: any) => {
         if (inFlightRef.current) return
         inFlightRef.current = true
-        setIsUploadingCampaign(true);
+        setIsCreatingCampaign(true);
         setIsCampaignCreateError(false);
         setCampaignErrorText('');
         try {
@@ -275,7 +275,20 @@ const UserProfile = () => {
             const imageUrl = getIPFSURL(imageCid);
             // During campaign creation: create the onchain metadata object with 'goal' clearly set
             const goal = parseFloat((campaignData.target || '0').toString().replace(/[^0-9.]/g, '')) || 0
-            const baseMeta = { title: campaignData.campaignTitle, category: campaignData.category, description: campaignData.description, image: imageUrl, goal };
+            const deadlineUnix =
+                typeof campaignData.deadlineUnixSeconds === 'number' && Number.isFinite(campaignData.deadlineUnixSeconds)
+                    ? campaignData.deadlineUnixSeconds
+                    : undefined
+            const baseMeta = {
+                title: campaignData.campaignTitle,
+                category: campaignData.category,
+                description: campaignData.description,
+                image: imageUrl,
+                goal,
+                ...(deadlineUnix != null
+                    ? { deadlineUnix, deadlineISO: new Date(deadlineUnix * 1000).toISOString() }
+                    : {}),
+            }
             const contentHash = keccak256(stringToHex(JSON.stringify(baseMeta)));
             const meta = { ...baseMeta, contentHash };
             const metadataCid = await uploadMetadataToIPFS(meta);
@@ -287,7 +300,15 @@ const UserProfile = () => {
             } catch (e) {
                 console.warn('relayer storeHash failed, proceeding with on-chain creation:', e)
             }
-            const { receipt } = await createCampaignByNGO({ designer: address as `0x${string}`, title: campaignData.campaignTitle, description: campaignData.description, imageCid: imageCid, metadataCid, targetHBAR: goal });
+            const { receipt } = await createCampaignByNGO({
+                designer: address as `0x${string}`,
+                title: campaignData.campaignTitle,
+                description: campaignData.description,
+                imageCid: imageCid,
+                metadataCid,
+                targetHBAR: goal,
+                ...(deadlineUnix != null ? { deadlineUnixSeconds: deadlineUnix } : {}),
+            })
 
             const receiptStatus = receipt?.status as string | number | undefined
             if (!receipt || receiptStatus === 'reverted' || receiptStatus === 0 || receiptStatus === '0x0') {
@@ -302,7 +323,7 @@ const UserProfile = () => {
             setIsCampaignCreateError(true)
             setCampaignErrorText(err?.message || 'Failed to create campaign')
         } finally {
-            setIsUploadingCampaign(false)
+            setIsCreatingCampaign(false)
             inFlightRef.current = false
         }
     }
@@ -955,12 +976,12 @@ const UserProfile = () => {
 
             <Footer />
 
-            {isUploadingCampaign && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            {isCreatingCampaign && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50">
                     <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 text-center">
                         <Loader2 className="w-16 h-16 mx-auto mb-4 animate-spin text-black" />
-                        <h2 className="text-2xl font-bold mb-2">Uploading Campaign</h2>
-                        <p className="text-gray-600">Please wait while we upload your campaign...</p>
+                        <h2 className="text-2xl font-bold mb-2">Creating campaign</h2>
+                        <p className="text-gray-600">Uploading media and confirming on-chain…</p>
                     </div>
                 </div>
             )}

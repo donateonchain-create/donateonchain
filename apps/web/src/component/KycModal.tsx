@@ -43,12 +43,15 @@ const statusText: Record<KycStatusApi, string> = {
   expired: 'Verification expired. Please start again.',
 }
 
+type StatusLoadState = 'loading' | 'ready' | 'failed'
+
 const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps) => {
   const [status, setStatus] = useState<KycStatusApi | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [statusLoadState, setStatusLoadState] = useState<StatusLoadState>('loading')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmittedModalOpen, setIsSubmittedModalOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<KycFieldErrors>({})
   const [formValues, setFormValues] = useState<KycFormValues>({
     firstName: '',
@@ -63,22 +66,30 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
   })
 
   const canStartVerification = useMemo(
-    () => status === null || status === 'rejected' || status === 'expired',
-    [status]
+    () =>
+      statusLoadState === 'ready' &&
+      (status === null || status === 'rejected' || status === 'expired'),
+    [status, statusLoadState]
   )
 
   const loadStatus = async () => {
-    if (!walletAddress) return
-    setIsLoading(true)
-    setError(null)
+    if (!walletAddress) {
+      setStatus(null)
+      setStatusLoadState('failed')
+      setFetchError('Connect a wallet to check verification status.')
+      return
+    }
+    setStatusLoadState('loading')
+    setFetchError(null)
     try {
       const data = await getKycVerifications({ walletAddress, page: 1, limit: 1 })
       const latest = data.items?.[0]
       setStatus(latest?.status ?? null)
+      setStatusLoadState('ready')
     } catch {
-      setError('Unable to fetch verification status.')
-    } finally {
-      setIsLoading(false)
+      setStatus(null)
+      setStatusLoadState('failed')
+      setFetchError('Unable to fetch verification status.')
     }
   }
 
@@ -116,7 +127,7 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
       return
     }
     setIsSubmitting(true)
-    setError(null)
+    setSubmitError(null)
     try {
       const created = await createKycVerification({
         walletAddress,
@@ -144,7 +155,7 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
       setFieldErrors({})
       setIsSubmittedModalOpen(true)
     } catch {
-      setError('Unable to start verification right now.')
+      setSubmitError('Unable to start verification right now.')
     } finally {
       setIsSubmitting(false)
     }
@@ -153,6 +164,8 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
   useEffect(() => {
     if (!isOpen) return
     setIsSubmittedModalOpen(false)
+    setFetchError(null)
+    setSubmitError(null)
     loadStatus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, walletAddress])
@@ -190,20 +203,26 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
               </p>
             </div>
 
-            {isLoading && (
+            {statusLoadState === 'loading' && (
               <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Checking verification status...
               </div>
             )}
 
-            {!isLoading && status && (
+            {statusLoadState === 'ready' && status && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                 {statusText[status]}
               </div>
             )}
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {statusLoadState === 'failed' && fetchError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                {fetchError}
+              </div>
+            )}
+
+            {submitError && <p className="text-sm text-red-600">{submitError}</p>}
 
             {canStartVerification && (
               <div className="space-y-4">
@@ -403,29 +422,34 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
             <Button variant="secondary" size="md" onClick={onClose} className="flex-1">
               Close
             </Button>
+            {statusLoadState === 'failed' && (
+              <Button variant="primary-bw" size="md" onClick={loadStatus} disabled={!walletAddress} className="flex-1">
+                Try again
+              </Button>
+            )}
             {canStartVerification && (
               <Button
                 variant="primary-bw"
                 size="md"
                 onClick={startVerification}
-                disabled={isSubmitting || isLoading || !walletAddress}
+                disabled={isSubmitting || statusLoadState !== 'ready' || !walletAddress}
                 className="flex-1"
               >
                 {isSubmitting ? 'Starting verification...' : 'Start verification'}
               </Button>
             )}
-            {(status === 'pending' || status === 'in_review') && (
+            {statusLoadState === 'ready' && (status === 'pending' || status === 'in_review') && (
               <Button
                 variant="secondary"
                 size="md"
                 onClick={loadStatus}
-                disabled={isLoading}
+                disabled={statusLoadState === 'loading'}
                 className="flex-1"
               >
                 Check status
               </Button>
             )}
-            {status === 'approved' && (
+            {statusLoadState === 'ready' && status === 'approved' && (
               <Button variant="primary-bw" size="md" onClick={onApproved} className="flex-1">
                 Continue donation
               </Button>

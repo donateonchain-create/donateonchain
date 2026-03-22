@@ -6,7 +6,7 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import Banner from '../component/Banner'
 import ProductCard from '../component/ProductCard'
-import { products } from '../data/databank'
+import Clothimg from '../assets/Clothimg.png'
 import { ChevronDown, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { getIPFSURL } from '../utils/ipfs'
@@ -82,15 +82,27 @@ const ProductPage = () => {
         }
     })
 
+    const { data: relatedDesigns = [] } = useQuery({
+        queryKey: ['relatedDesigns', id],
+        queryFn: async () => {
+            const all = await getAllGlobalDesigns().catch(() => [] as any[])
+            const user = getStorageJson<any[]>('userDesigns', [])
+            const ngo = getStorageJson<any[]>('ngoDesigns', [])
+            const merged = [...all, ...user, ...ngo]
+            const uniq = Array.from(new Map(merged.map((d: any) => [d.id, d])).values())
+            return uniq.filter((d: any) => String(d.id) !== String(id)).slice(0, 5)
+        },
+        enabled: !!id,
+    })
+
     const profileName = customDesign?.walletAddress ? (customDesign.isNgo ? 'An NGO' : 'A Designer') : ''
     const isMyDesign = customDesign && isConnected && address ? 
         (customDesign.walletAddress?.toLowerCase() === address.toLowerCase() || customDesign.connectedWalletAddress?.toLowerCase() === address.toLowerCase()) 
         : false
     const availableQuantity = customDesign ? (customDesign.quantity ?? customDesign.maxQuantity ?? 9999) : Infinity
-    const product = customDesign || products.find(p => p.id === parseInt(id || '1'))
-    const maxAvailable = customDesign ? availableQuantity : (product as any)?.stock ?? Infinity
+    const maxAvailable = availableQuantity
 
-    if (!product) {
+    if (!customDesign) {
         return (
             <div>
                 <Header />
@@ -108,11 +120,11 @@ const ProductPage = () => {
     const handleAccordionToggle = (section: string) => { setOpenAccordion(openAccordion === section ? null : section) }
 
     const handleAddToCart = () => {
-        if (product) {
-            const limit = customDesign ? (customDesign.quantity || customDesign.maxQuantity || maxAvailable) : maxAvailable
+        if (customDesign) {
+            const limit = customDesign.quantity || customDesign.maxQuantity || maxAvailable
             const safeQuantity = Math.min(selectedQuantity, limit)
 
-            if (customDesign && isConnected && isMyDesign) {
+            if (isConnected && isMyDesign) {
                 const maxQuantity = limit
                 customDesign.sizes.forEach((size: string) => {
                     for (let i = 0; i < safeQuantity; i++) {
@@ -122,7 +134,7 @@ const ProductPage = () => {
             } else if (selectedSize) {
                 const maxQuantity = limit
                 for (let i = 0; i < safeQuantity; i++) {
-                    addToCart(product.id, selectedSize, (product as any).color, maxQuantity)
+                    addToCart(customDesign.id, selectedSize, customDesign.color, maxQuantity)
                 }
             }
             setShowSuccessMessage(true)
@@ -189,7 +201,7 @@ const ProductPage = () => {
                     <div className="flex justify-center">
                         <div className="w-full max-w-md">
                             <div className="bg-gray-100 rounded-2xl p-8 flex items-center justify-center">
-                                {customDesign ? (
+                                {customDesign && (
                                     <div className="relative w-full max-w-sm">
                                         <img src="/shirtfront.png" alt="Shirt Mockup" className="w-full h-auto object-contain" style={{ filter: customDesign.color === '#FFFFFF' ? 'none' : customDesign.color === '#000000' ? 'brightness(0)' : 'none' }} />
                                         {currentImageView === 'front' && (customDesign.frontDesign?.dataUrl || customDesign.frontDesign?.url) && (
@@ -217,18 +229,16 @@ const ProductPage = () => {
                                             </div>
                                         )}
                                     </div>
-                                ) : (
-                                    <img src={product.image} alt={product.title} className="w-full h-auto object-contain" />
                                 )}
                             </div>
                         </div>
                     </div>
                     <div className="flex flex-col justify-center">
                         <div className="max-w-md">
-                            <h1 className="text-3xl md:text-4xl font-bold text-black mb-2">{customDesign ? customDesign.pieceName : product.title}</h1>
-                            <p className="text-lg text-black mb-2">{customDesign ? `Campaign: ${customDesign.campaign}` : `By ${product.creator}`}</p>
-                            {customDesign && (<p className="text-base text-gray-600 mb-4">Created by: {isConnected && isMyDesign ? 'You' : (profileName || (customDesign.isNgo ? 'An NGO' : 'A User'))}</p>)}
-                            <p className="text-2xl font-semibold text-black mb-8">{customDesign ? `${customDesign.price} HBAR` : `${parseInt(String(product.price).replace(/[^\d]/g, '')).toLocaleString()} HBAR`}</p>
+                            <h1 className="text-3xl md:text-4xl font-bold text-black mb-2">{customDesign.pieceName}</h1>
+                            <p className="text-lg text-black mb-2">{`Campaign: ${customDesign.campaign}`}</p>
+                            <p className="text-base text-gray-600 mb-4">Created by: {isConnected && isMyDesign ? 'You' : (profileName || (customDesign.isNgo ? 'An NGO' : 'A User'))}</p>
+                            <p className="text-2xl font-semibold text-black mb-8">{`${customDesign.price} HBAR`}</p>
                             {customDesign && isConnected && isMyDesign ? (
                                 <div className="flex gap-3 mb-8">
                                     <button onClick={() => navigate('/create-design', { state: { editDesign: customDesign } })} className="flex-1 bg-black text-white py-4 px-6 rounded-lg font-semibold text-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">Edit Design</button>
@@ -241,7 +251,7 @@ const ProductPage = () => {
                                 <div className="relative">
                                             <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg appearance-none bg-white text-black focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent">
                                         <option value="">Choose an option</option>
-                                        {(customDesign?.sizes || product.sizes || []).map((size: string) => (
+                                        {(customDesign?.sizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL']).map((size: string) => (
                                                     <option key={size} value={size}>{size}</option>
                                         ))}
                                     </select>
@@ -310,29 +320,31 @@ const ProductPage = () => {
                             <div className="space-y-2">
                                 <div className="border border-gray-200 rounded-lg">
                                     <button onClick={() => handleAccordionToggle('details')} className="w-full px-4 py-3 text-left bg-black text-white rounded-lg flex items-center justify-between hover:bg-gray-800 transition-colors"><span className="font-medium">Product Details</span><ChevronDown className={`transform transition-transform ${openAccordion === 'details' ? 'rotate-180' : ''}`} size={20} /></button>
-                                    {openAccordion === 'details' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(product as any).details}</p></div>)}
+                                    {openAccordion === 'details' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(customDesign as any)?.details || customDesign.description || '—'}</p></div>)}
                                 </div>
                                 <div className="border border-gray-200 rounded-lg">
                                     <button onClick={() => handleAccordionToggle('shipping')} className="w-full px-4 py-3 text-left bg-black text-white rounded-lg flex items-center justify-between hover:bg-gray-800 transition-colors"><span className="font-medium">Shipping</span><ChevronDown className={`transform transition-transform ${openAccordion === 'shipping' ? 'rotate-180' : ''}`} size={20} /></button>
-                                    {openAccordion === 'shipping' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(product as any).shipping}</p></div>)}
+                                    {openAccordion === 'shipping' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(customDesign as any)?.shipping || 'Standard shipping at checkout.'}</p></div>)}
                                 </div>
                                 <div className="border border-gray-200 rounded-lg">
                                     <button onClick={() => handleAccordionToggle('delivery')} className="w-full px-4 py-3 text-left bg-black text-white rounded-lg flex items-center justify-between hover:bg-gray-800 transition-colors"><span className="font-medium">Delivery</span><ChevronDown className={`transform transition-transform ${openAccordion === 'delivery' ? 'rotate-180' : ''}`} size={20} /></button>
-                                    {openAccordion === 'delivery' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(product as any).delivery}</p></div>)}
+                                    {openAccordion === 'delivery' && (<div className="p-4 bg-gray-50 text-gray-700"><p>{(customDesign as any)?.delivery || 'Delivery timelines are confirmed after order.'}</p></div>)}
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
+            {relatedDesigns.length > 0 && (
             <section className="px-4 md:px-7 py-12">
                 <h2 className="text-3xl md:text-4xl font-bold text-black mb-8">You may also like</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-                    {products.filter(p => p.id !== product.id).slice(0, 5).map((relatedProduct) => (
-                        <ProductCard key={relatedProduct.id} image={relatedProduct.image} title={relatedProduct.title} creator={relatedProduct.creator} price={relatedProduct.price} alt={relatedProduct.title} onClick={() => navigate(`/product/${relatedProduct.id}`)} />
+                    {relatedDesigns.map((relatedProduct: any) => (
+                        <ProductCard key={relatedProduct.id} image={relatedProduct.frontDesign?.url || relatedProduct.frontDesign?.dataUrl || Clothimg} title={relatedProduct.pieceName || relatedProduct.title || 'Design'} creator={relatedProduct.creator || `${String(relatedProduct.walletAddress || '').slice(0, 6)}…`} price={typeof relatedProduct.price === 'string' && relatedProduct.price.includes('HBAR') ? relatedProduct.price : `${relatedProduct.price} HBAR`} alt={relatedProduct.pieceName || ''} onClick={() => navigate(`/product/${relatedProduct.id}`)} />
                             ))}
                     </div>
             </section>
+            )}
 <Banner />
             <Footer />
         </div>

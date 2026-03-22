@@ -8,14 +8,23 @@ interface CreateCampaignModalProps {
     onSubmit: (campaignData: any) => void;
 }
 
+function defaultDeadlineLocalValue(): string {
+    const d = new Date()
+    d.setDate(d.getDate() + 30)
+    d.setHours(23, 59, 0, 0)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 const CreateCampaignModal = ({ isOpen, onClose, onSubmit }: CreateCampaignModalProps) => {
     const [formData, setFormData] = useState({
         coverImage: null as File | null,
         campaignTitle: '',
         category: '',
         description: '',
-        target: '0'
-    });
+        target: '0',
+        deadline: defaultDeadlineLocalValue(),
+    })
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isCategoryOpen, setIsCategoryOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,14 +69,24 @@ const CreateCampaignModal = ({ isOpen, onClose, onSubmit }: CreateCampaignModalP
 
     const handleSubmit = () => {
         if (!formData.coverImage || !formData.campaignTitle || !formData.category || !formData.description || !formData.target) {
-            alert('Please fill in all fields');
-            return;
+            alert('Please fill in all fields')
+            return
+        }
+        if (!formData.deadline) {
+            alert('Please set a campaign deadline')
+            return
+        }
+        const deadlineMs = new Date(formData.deadline).getTime()
+        if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now() + 60 * 60 * 1000) {
+            alert('Deadline must be at least 1 hour from now')
+            return
         }
         onSubmit({
             ...formData,
-            coverImageFile: formData.coverImage
-        });
-    };
+            coverImageFile: formData.coverImage,
+            deadlineUnixSeconds: Math.floor(deadlineMs / 1000),
+        })
+    }
 
     const handleClose = () => {
         setFormData({
@@ -75,12 +94,19 @@ const CreateCampaignModal = ({ isOpen, onClose, onSubmit }: CreateCampaignModalP
             campaignTitle: '',
             category: '',
             description: '',
-            target: '0'
-        });
-        setPreviewImage(null);
-        setIsCategoryOpen(false);
-        onClose();
-    };
+            target: '0',
+            deadline: defaultDeadlineLocalValue(),
+        })
+        setPreviewImage(null)
+        setIsCategoryOpen(false)
+        onClose()
+    }
+
+    const minDeadline = (() => {
+        const t = new Date(Date.now() + 60 * 60 * 1000)
+        const pad = (n: number) => String(n).padStart(2, '0')
+        return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}`
+    })()
 
     if (!isOpen) return null;
 
@@ -117,8 +143,8 @@ const CreateCampaignModal = ({ isOpen, onClose, onSubmit }: CreateCampaignModalP
                         ) : (
                             <>
                                 <UploadIcon className="mx-auto mb-2 text-gray-400" size={32} />
-                                <p className="font-bold text-gray-700 mb-1">Upload Your Cover Image</p>
-                                <p className="text-sm text-gray-500">Drag and drop it here</p>
+                                <p className="font-bold text-gray-700 mb-1">Campaign cover image</p>
+                                <p className="text-sm text-gray-500">Drag and drop or click to add</p>
                             </>
                         )}
                     </div>
@@ -197,6 +223,18 @@ const CreateCampaignModal = ({ isOpen, onClose, onSubmit }: CreateCampaignModalP
                                 className="w-full border border-gray-300 rounded-lg px-4 py-3 pl-20 text-base focus:outline-none focus:ring-2 focus:ring-black"
                             />
                         </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-2xl font-bold mb-3">Campaign deadline</h3>
+                        <p className="text-sm text-gray-500 mb-2">When fundraising ends (must be at least 1 hour from now).</p>
+                        <input
+                            type="datetime-local"
+                            min={minDeadline}
+                            value={formData.deadline}
+                            onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-black"
+                        />
                     </div>
 
                     <Button 

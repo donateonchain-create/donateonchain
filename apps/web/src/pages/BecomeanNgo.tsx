@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useWatchContractEvent, useSignMessage, useSwitchChain } from 'wagmi'
 import { useAppKit } from '@reown/appkit/react'
@@ -9,7 +9,8 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { SkeletonFormApplication } from '../component/Skeleton'
 import { ChevronDown, Upload, CheckCircle, Clock, X } from 'lucide-react'
-import { saveNgoApplication, getNgoApplicationByWallet, deleteNgoApplication } from '../utils/storageApi'
+import { saveNgoApplication, deleteNgoApplication, persistNgoApplicationLocal, clearNgoApplicationLocal } from '../utils/storageApi'
+import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
 import { ngoRegisterPending } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
 import { publicClient, read } from '../onchain/client'
@@ -29,34 +30,10 @@ const BecomeanNgo = () => {
         setTimeout(() => setToast(null), 4000)
     }
 
-    const { data: ngoApplicationData, isLoading: isLoadingApplication } = useQuery({
-        queryKey: ['ngoApplication', address, isConnected],
-        queryFn: async () => {
-            if (!isConnected || !address) return { hasApplied: false, data: null }
-            try {
-                const existingApplication = await getNgoApplicationByWallet(address)
-                if (existingApplication) return { hasApplied: true, data: existingApplication }
-                const ngos = getStorageJson<any[]>('ngos', [])
-                const userNgo = ngos.find((ngo: any) =>
-                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userNgo) return { hasApplied: true, data: userNgo }
-                return { hasApplied: false, data: null }
-            } catch (_error) {
-                const ngos = getStorageJson<any[]>('ngos', [])
-                const userNgo = ngos.find((ngo: any) =>
-                    ngo.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    ngo.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userNgo) return { hasApplied: true, data: userNgo }
-                return { hasApplied: false, data: null }
-            }
-        }
-    })
+    const { data: ngoApplicationData, isLoading: isLoadingApplication } = useNgoApplicationQuery()
 
     const hasAlreadyApplied = ngoApplicationData?.hasApplied ?? false
-    const existingNgoData = ngoApplicationData?.data ?? null
+    const existingNgoData: any = ngoApplicationData?.data ?? null
 
     useWatchContractEvent({
         address: addresses.DONATE_ON_CHAIN as any,
@@ -311,7 +288,14 @@ const BecomeanNgo = () => {
                 setIsSubmitting(false)
                 return
             }
-            await saveNgoApplication(ngoData, signature, timestamp)
+            const savedFirst = await saveNgoApplication(ngoData, signature, timestamp)
+            if (!savedFirst) {
+                setSubmitError('Failed to save NGO application. Please try again.')
+                setIsSubmitting(false)
+                return
+            }
+            persistNgoApplicationLocal(address, { ...ngoData, status: 'pending' })
+            queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
             savedOk = true
             try {
                 await createKycVerification({ walletAddress: address, metadata })
@@ -344,7 +328,11 @@ const BecomeanNgo = () => {
                 setIsSubmitting(false)
                 return
             }
-            await saveNgoApplication(updatedNgoData, signature2, timestamp2)
+            const savedSecond = await saveNgoApplication(updatedNgoData, signature2, timestamp2)
+                        if (savedSecond) {
+                            persistNgoApplicationLocal(address, { ...updatedNgoData, status: 'pending' })
+                            queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
+                        }
                     }
                     showToast('NGO application submitted on-chain with IPFS metadata.', 'success')
                 } else {
@@ -534,7 +522,8 @@ const BecomeanNgo = () => {
                                     <div className="flex items-center justify-center gap-3">
                                         <button
                                             onClick={() => {
-queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
+                                                if (address) clearNgoApplicationLocal(address)
+                                                queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
                                                 if (address) {
                                                     deleteNgoApplication(address).catch(() => {})
                                                 }
@@ -596,6 +585,7 @@ queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnecte
                                                 const confirmed = window.confirm('Withdraw your NGO application? This will delete your submission.')
                                                 if (!confirmed) return
                                                 try {
+                                                    clearNgoApplicationLocal(address)
                                                     await deleteNgoApplication(address)
                                                 } catch {}
                                                 try {
@@ -603,7 +593,7 @@ queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnecte
                                                     const filtered = ngos.filter((n: any) => (n.connectedWalletAddress || n.walletAddress || '').toLowerCase() !== address.toLowerCase())
                                                     localStorage.setItem('ngos', JSON.stringify(filtered))
                                                 } catch {}
-queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
+                                                queryClient.invalidateQueries({ queryKey: ['ngoApplication', address, isConnected] })
                                             }}
                                             className="bg-red-600 text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-red-700 transition-colors"
                                         >

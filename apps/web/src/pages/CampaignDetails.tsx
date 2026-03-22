@@ -9,11 +9,20 @@ import CampaignCard from '../component/CampaignCard'
 import Button from '../component/Button'
 import EditCampaignModal from '../component/EditCampaignModal'
 import KycModal from '../component/KycModal'
-import { Loader2, Check, Gift, Trash } from 'lucide-react'
+import { Loader2, Check, Gift, Trash, Calendar, Users } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
 import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain, isKycVerifiedOnChain } from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
-import { getCampaignById, getDonationsByCampaign as apiGetDonationsByCampaign, createDonation, mintDonationNFT, getKycVerifications } from '../api'
+import { createDonation, mintDonationNFT, getKycVerifications } from '../api'
+import type { DonationEventApi } from '../types/api'
+import {
+    computeCampaignPercent,
+    donationAmountExceedsRemaining,
+    formatHbarDisplay,
+    getRemainingToTargetHBAR,
+    normalizeCampaignAmounts,
+    weiToHbar,
+} from '../utils/hbar'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -34,6 +43,49 @@ const setCache = (key: string, data: any) => {
     } catch {}
 }
 
+function donationEventsFromChain(campaignId: string, raw: Awaited<ReturnType<typeof onchainGetDonationsByCampaign>>): DonationEventApi[] {
+    const out: DonationEventApi[] = []
+    const n = raw.donors.length
+    for (let i = 0; i < n; i++) {
+        const donor = raw.donors[i]
+        const amount = raw.amounts[i]
+        const ts = raw.timestamps[i]
+        const serial = raw.nftSerialNumbers[i]
+        const tsNum = Number(ts)
+        const createdAt =
+            tsNum > 0
+                ? new Date(tsNum < 1e12 ? tsNum * 1000 : tsNum).toISOString()
+                : ''
+        out.push({
+            id: `onchain-${campaignId}-${String(serial ?? i)}-${i}`,
+            campaignId,
+            donor,
+            amount: String(amount),
+            txHash: null,
+            createdAt,
+        })
+    }
+    out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return out
+}
+
+const formatCampaignDeadline = (raw: string | undefined | null): string | null => {
+    if (!raw) return null
+    const s = String(raw).trim()
+    if (!s) return null
+    const num = Number(s)
+    if (!Number.isNaN(num) && num > 0) {
+        const ms = num < 1e12 ? num * 1000 : num
+        const d = new Date(ms)
+        if (!Number.isNaN(d.getTime())) {
+            return d.toLocaleDateString(undefined, { dateStyle: 'long' })
+        }
+    }
+    const d = new Date(s)
+    if (!Number.isNaN(d.getTime())) return d.toLocaleDateString(undefined, { dateStyle: 'long' })
+    return s
+}
+
 const CampaignDetails = () => {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
@@ -52,18 +104,20 @@ const CampaignDetails = () => {
         queryKey: ['campaign', id],
         queryFn: async () => {
             if (!id) return null;
-            const cacheKey = `campaign_${id}`
+            const cacheKey = `campaign_detail_v3_${id}`
             const cached = getCache(cacheKey)
-            if (cached) return cached
+            if (cached) return normalizeCampaignAmounts(cached)
 
             try {
                 const numericId = BigInt(id || '0')
                 const chainCampaign = await onchainGetCampaign(numericId)
                 let amountRaised = 0
                 let metaImage: string | undefined = undefined
-                let metaGoal: number | undefined = undefined
+                let metaGoal: number | string | undefined = undefined
                 let metaTitle = ''
                 let metaDesc = ''
+                let metaDeadlineUnix: number | string | undefined
+                let metaDeadlineIso: string | undefined
                 let metaLoaded = false
                 try {
                     const metaCid = await getCampaignMetadataCid(numericId)
@@ -74,6 +128,12 @@ const CampaignDetails = () => {
                             metaGoal = meta.goal
                             metaTitle = meta.title
                             metaDesc = meta.description
+                            if (meta.deadlineUnix != null && meta.deadlineUnix !== '') {
+                                metaDeadlineUnix = meta.deadlineUnix
+                            }
+                            if (typeof meta.deadlineISO === 'string' && meta.deadlineISO.trim()) {
+                                metaDeadlineIso = meta.deadlineISO.trim()
+                            }
                             metaLoaded = true
                         }
                     }
@@ -88,35 +148,44 @@ const CampaignDetails = () => {
                     amountRaised = donations.totalRaisedHBAR
                 } catch {}
 
+                const metaGoalNum =
+                    metaGoal !== undefined && metaGoal !== null && metaGoal !== ''
+                        ? Number(metaGoal)
+                        : undefined
+                const targetFromMeta =
+                    metaGoalNum !== undefined && !Number.isNaN(metaGoalNum) ? metaGoalNum : undefined
                 const campaignObj: any = {
                     id: Number(numericId),
                     onchainId: Number(numericId),
                     title: metaTitle || chainCampaign?.title,
                     description: metaDesc || chainCampaign?.description,
-                    target: metaGoal !== undefined ? metaGoal : (chainCampaign ? Number(chainCampaign.goalHBAR) : 0),
+                    target:
+                        targetFromMeta !== undefined
+                            ? targetFromMeta
+                            : chainCampaign
+                              ? weiToHbar(chainCampaign.goalHBAR)
+                              : 0,
                     ngoWallet: chainCampaign?.ngo,
                     image: metaImage || chainCampaign?.image,
                     amountRaised,
                     percentage: 0,
                     active: chainCampaign?.active ?? true,
                 }
-                
-                const target = campaignObj.target || 0
+
+                if (chainCampaign?.deadline != null && chainCampaign.deadline > 0n) {
+                    campaignObj.deadline = String(chainCampaign.deadline)
+                } else if (metaDeadlineUnix != null && metaDeadlineUnix !== '') {
+                    campaignObj.deadline = String(metaDeadlineUnix)
+                } else if (metaDeadlineIso) {
+                    campaignObj.deadline = metaDeadlineIso
+                }
+
+                let target = campaignObj.target || 0
                 campaignObj.percentage = target > 0 ? (amountRaised / target) * 100 : 0
-                
-                try {
-                    const apiCampaign = await getCampaignById(String(id))
-                    if (apiCampaign?.donationTotal != null) {
-                        const backendRaised = Number(apiCampaign.donationTotal ?? apiCampaign.raisedAmount ?? 0)
-                        if (backendRaised >= 0) {
-                            campaignObj.amountRaised = backendRaised
-                            campaignObj.percentage = target > 0 ? (backendRaised / target) * 100 : 0
-                        }
-                    }
-                } catch {}
-                
-                setCache(cacheKey, campaignObj)
-                return campaignObj
+
+                const normalized = normalizeCampaignAmounts(campaignObj)
+                setCache(cacheKey, normalized)
+                return normalized
             } catch {
                 return null
             }
@@ -152,7 +221,12 @@ const CampaignDetails = () => {
         queryKey: ['campaign_donations', id],
         queryFn: async () => {
             if (!id) return []
-            try { return await apiGetDonationsByCampaign(id, 50) } catch { return [] }
+            try {
+                const raw = await onchainGetDonationsByCampaign(BigInt(id))
+                return donationEventsFromChain(id, raw).slice(0, 50)
+            } catch {
+                return []
+            }
         },
         enabled: !!id
     })
@@ -194,6 +268,17 @@ const CampaignDetails = () => {
         )
     }
 
+    const remainingToTargetHBAR = getRemainingToTargetHBAR(
+        Number(campaign.target || 0),
+        Number(campaign.amountRaised || 0)
+    )
+    const parsedDonationAmount = parseFloat(donationAmount)
+    const donationExceedsRemaining =
+        remainingToTargetHBAR > 0 &&
+        donationAmount.trim() !== '' &&
+        !Number.isNaN(parsedDonationAmount) &&
+        donationAmountExceedsRemaining(parsedDonationAmount, remainingToTargetHBAR)
+
     const performDonation = async () => {
         if (!donationAmount.trim() || !isConnected) return
         const value = parseFloat(donationAmount)
@@ -201,7 +286,17 @@ const CampaignDetails = () => {
             setDonationError('Please enter a valid amount')
             return
         }
-        
+        if (remainingToTargetHBAR <= 0) {
+            setDonationError('This campaign has already reached its funding target.')
+            return
+        }
+        if (donationAmountExceedsRemaining(value, remainingToTargetHBAR)) {
+            setDonationError(
+                `You can donate up to ${formatHbarDisplay(remainingToTargetHBAR)} HBAR to reach the campaign target.`
+            )
+            return
+        }
+
         setIsDonating(true)
         setDonationError(null)
         setDonationSuccess(false)
@@ -233,20 +328,26 @@ const CampaignDetails = () => {
                 if (import.meta.env.DEV) console.warn('NFT mint failed (non-critical):', e)
             })
             // Bust localStorage cache so query re-fetches fresh on-chain data
+            localStorage.removeItem(`campaign_detail_v3_${id}`)
             localStorage.removeItem(`campaign_${id}`)
             const numericId = BigInt(id || '0')
             const donations = await onchainGetDonationsByCampaign(numericId)
             const goal = campaign.target || 0
             const updatedAmountRaised = donations.totalRaisedHBAR
             const updatedPercentage = goal > 0 ? (updatedAmountRaised / goal) * 100 : 0
-            const updated = {
+            const prevCount =
+                typeof campaign.donationCount === 'number' ? campaign.donationCount : donationActivity.length
+            const updated = normalizeCampaignAmounts({
                 ...campaign,
                 amountRaised: updatedAmountRaised,
-                percentage: updatedPercentage
-            }
+                percentage: updatedPercentage,
+                donationCount: prevCount + 1,
+            })
             queryClient.setQueryData(['campaign', id], updated)
-            setCache(`campaign_${id}`, updated)
-            if (id) { queryClient.invalidateQueries({ queryKey: ['campaign_donations', id] }) }
+            if (id) {
+                queryClient.invalidateQueries({ queryKey: ['campaign_donations', id] })
+                queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+            }
             setTimeout(() => {
                 setDonationSuccess(false)
                 setTxHash(null)
@@ -272,6 +373,16 @@ const CampaignDetails = () => {
         const value = parseFloat(donationAmount)
         if (!donationAmount.trim() || Number.isNaN(value) || value <= 0) {
             setDonationError('Please enter a valid amount')
+            return
+        }
+        if (remainingToTargetHBAR <= 0) {
+            setDonationError('This campaign has already reached its funding target.')
+            return
+        }
+        if (donationAmountExceedsRemaining(value, remainingToTargetHBAR)) {
+            setDonationError(
+                `You can donate up to ${formatHbarDisplay(remainingToTargetHBAR)} HBAR to reach the campaign target.`
+            )
             return
         }
         try {
@@ -347,7 +458,36 @@ const CampaignDetails = () => {
                         </div>
                     )}
 
-                  
+                    <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+                                <Calendar className="h-5 w-5 text-gray-800" aria-hidden />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Deadline</p>
+                                <p className="mt-1 text-lg font-semibold text-black">
+                                    {formatCampaignDeadline(campaign.deadline) ?? 'Not set'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-4 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+                                <Users className="h-5 w-5 text-gray-800" aria-hidden />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Donations</p>
+                                <p className="mt-1 text-lg font-semibold text-black">
+                                    {typeof campaign.donationCount === 'number'
+                                        ? campaign.donationCount.toLocaleString()
+                                        : donationActivity.length.toLocaleString()}
+                                </p>
+                                {typeof campaign.donationCount !== 'number' && donationActivity.length > 0 && (
+                                    <p className="mt-1 text-xs text-gray-500">From recent activity</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="mb-12">
                         {(() => {
                             const target = Number(campaign.target || 0);
@@ -363,7 +503,7 @@ const CampaignDetails = () => {
                                         >
                                             
                                             <div className="absolute left-0 top-0 h-full flex items-center px-6 min-w-fit">
-                                                <span className="text-xl font-semibold text-black whitespace-nowrap">{amountRaised.toFixed(2)} HBAR</span>
+                                                <span className="text-xl font-semibold text-black whitespace-nowrap">{formatHbarDisplay(amountRaised)} HBAR</span>
                                             </div>
                                         </div>
                                         
@@ -375,7 +515,7 @@ const CampaignDetails = () => {
                                     
                                   
                                     <div className="mt-2 text-right">
-                                        <span className="text-base text-gray-600">Target: {target.toFixed(2)} HBAR</span>
+                                        <span className="text-base text-gray-600">Target: {formatHbarDisplay(target)} HBAR</span>
                                     </div>
                                 </>
                             )
@@ -426,6 +566,15 @@ const CampaignDetails = () => {
                                     <label className="block text-sm font-medium text-black mb-2">
                                         Enter Amount (HBAR)
                                     </label>
+                                    {remainingToTargetHBAR > 0 ? (
+                                        <p className="mb-2 text-sm text-gray-600">
+                                            Up to {formatHbarDisplay(remainingToTargetHBAR)} HBAR left to reach the goal.
+                                        </p>
+                                    ) : (
+                                        <p className="mb-2 text-sm text-amber-800">
+                                            This campaign has reached its funding target.
+                                        </p>
+                                    )}
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-gray-500">HBAR</span>
                                         <input
@@ -433,10 +582,23 @@ const CampaignDetails = () => {
                                             step="0.01"
                                             min="0"
                                             value={donationAmount}
-                                            onChange={(e) => setDonationAmount(e.target.value)}
+                                            onChange={(e) => {
+                                                setDonationAmount(e.target.value)
+                                                setDonationError(null)
+                                            }}
                                             placeholder="0.00"
-                                            className="w-full pl-16 pr-4 py-3 border border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-[#4ADE80] focus:border-transparent"
-                                            disabled={!isConnected || isDonating || campaign.active === false}
+                                            aria-invalid={donationExceedsRemaining}
+                                            className={`w-full pl-16 pr-4 py-3 rounded-lg text-lg focus:outline-none focus:ring-2 focus:border-transparent ${
+                                                donationExceedsRemaining
+                                                    ? 'border-2 border-red-500 focus:ring-red-400'
+                                                    : 'border border-gray-300 focus:ring-[#4ADE80]'
+                                            }`}
+                                            disabled={
+                                                !isConnected ||
+                                                isDonating ||
+                                                campaign.active === false ||
+                                                remainingToTargetHBAR <= 0
+                                            }
                                         />
                                     </div>
                                     {donationError && (
@@ -448,7 +610,14 @@ const CampaignDetails = () => {
                                     size="lg"
                                     onClick={handleDonate}
                                     className="w-full rounded-lg py-4 text-lg"
-                                    disabled={!donationAmount.trim() || !isConnected || isDonating || campaign.active === false}
+                                    disabled={
+                                        !donationAmount.trim() ||
+                                        !isConnected ||
+                                        isDonating ||
+                                        campaign.active === false ||
+                                        remainingToTargetHBAR <= 0 ||
+                                        donationExceedsRemaining
+                                    }
                                 >
                                     {isDonating ? 'Processing Donation...' : campaign.active === false ? 'Campaign Inactive' : isConnected ? 'Make Donation' : 'Connect Wallet to Donate'}
                                 </Button>
@@ -498,7 +667,9 @@ const CampaignDetails = () => {
                                             <span className="font-mono truncate max-w-[140px]" title={d.donor}>
                                                 {d.donor.slice(0, 6)}...{d.donor.slice(-4)}
                                             </span>
-                                            <span className="font-medium">{Number(d.amount).toLocaleString()} HBAR</span>
+                                            <span className="font-medium">
+                                                {formatHbarDisplay(weiToHbar(d.amount))} HBAR
+                                            </span>
                                             {d.createdAt && (
                                                 <span className="text-gray-500">
                                                     {new Date(d.createdAt).toLocaleDateString()}
@@ -522,14 +693,14 @@ const CampaignDetails = () => {
                     {allCampaigns.slice(0, 5).map((relatedCampaign: any) => {
                         const target = Number(relatedCampaign.target || 0)
                         const amountRaised = Number(relatedCampaign.amountRaised || 0)
-                        const percentage = relatedCampaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0)
+                        const percentage = computeCampaignPercent(amountRaised, target)
                         return (
                             <CampaignCard
                                 key={relatedCampaign.onchainId || relatedCampaign.id}
                                 image={relatedCampaign.image || relatedCampaign.coverImageFile}
                                 title={relatedCampaign.title}
-                                amountRaised={`${amountRaised.toLocaleString()} HBAR`}
-                                target={`${target.toLocaleString()} HBAR`}
+                                amountRaised={`${formatHbarDisplay(amountRaised)} HBAR`}
+                                target={`${formatHbarDisplay(target)} HBAR`}
                                 percentage={percentage}
                                 alt={relatedCampaign.title}
                                 onClick={() => navigate(`/campaign/${relatedCampaign.onchainId || relatedCampaign.id}`)}

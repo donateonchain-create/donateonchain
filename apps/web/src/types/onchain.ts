@@ -8,6 +8,7 @@ export type Campaign = {
   ngo: HexAddress
   designer?: HexAddress
   image?: string
+  deadline?: bigint
 }
 
 export type Design = {
