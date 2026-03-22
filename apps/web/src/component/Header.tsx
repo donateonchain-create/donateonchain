@@ -262,12 +262,20 @@ const Header = () => {
                         Campaigns
                     </button>
                     {!ngoApplicationApproved && (
+                    <>
+                    <button 
+                        className={`inline-flex items-center gap-[6px] text-base text-black bg-transparent pb-1 cursor-pointer hover:opacity-80 border-b-2 transition-colors ${activeNav==='Designer' ? 'border-black' : 'border-transparent hover:border-black'}`}
+                        onClick={() => { setActiveNav('Designer'); setIsShopOpen(false); navigate('/become-a-designer'); }}
+                    >
+                        Become a Designer
+                    </button>
                     <button 
                         className={`inline-flex items-center gap-[6px] text-base text-black bg-transparent pb-1 cursor-pointer hover:opacity-80 border-b-2 transition-colors ${activeNav==='Customize' ? 'border-black' : 'border-transparent hover:border-black'}`}
                         onClick={() => { setActiveNav('Customize'); setIsShopOpen(false); navigate('/become-an-ngo'); }}
                     >
                         Become an NGO
                     </button>
+                    </>
                     )}
                     {showAdmin && (
                         <button 
@@ -575,11 +583,18 @@ const Header = () => {
                                 </button>
                             </li>
                             {!ngoApplicationApproved && (
+                            <>
+                            <li>
+                                <button className="w-full flex items-center justify-between py-5" onClick={() => { setIsMobileMenuOpen(false); setActiveNav('Designer'); navigate('/become-a-designer'); }}>
+                                    <span>Become a Designer</span>
+                                </button>
+                            </li>
                             <li>
                                 <button className="w-full flex items-center justify-between py-5" onClick={() => { setIsMobileMenuOpen(false); setActiveNav('Customize'); navigate('/become-an-ngo'); }}>
                                     <span>Become an NGO</span>
                                 </button>
                             </li>
+                            </>
                             )}
                         </ul>
                         <div className="pt-6">

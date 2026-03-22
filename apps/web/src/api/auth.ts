@@ -103,14 +103,14 @@ export async function verifySignature(
  * otherwise falls back to the legacy Admin API Key.
  */
 export function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
   const token = getAuthToken()
   if (token) {
-    return { Authorization: `Bearer ${token}` }
+    headers.Authorization = `Bearer ${token}`
   }
-  // Fallback to legacy Admin API Key for backwards compatibility
   const adminApiKey = import.meta.env.VITE_ADMIN_API_KEY
   if (adminApiKey) {
-    return { 'x-api-key': adminApiKey }
+    headers['x-api-key'] = adminApiKey
   }
-  return {}
+  return headers
 }

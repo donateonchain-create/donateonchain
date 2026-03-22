@@ -8,9 +8,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { getStorageJson } from '../utils/safeStorage'
-import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage } from '../utils/storageApi'
+import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage, isNgoApplicationApproved, isDesignerApplicationApproved } from '../utils/storageApi'
+import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
+import { useDesignerApplicationQuery } from '../hooks/useDesignerApplicationQuery'
 import { getUserProofNFTs, listCampaignsByNGO } from '../onchain/adapter';
-import { getUserRoles, createCampaignByNGO } from '../onchain/adapter';
+import { createCampaignByNGO } from '../onchain/adapter';
 import CreateCampaignModal from '../component/CreateCampaignModal';
 import { getIPFSURL, uploadFileToIPFS, uploadMetadataToIPFS } from '../utils/ipfs';
 import { keccak256, stringToHex, formatUnits } from 'viem';
@@ -98,16 +100,11 @@ const UserProfile = () => {
         }
     });
 
-    const { data: roles = { isDesigner: false, isNgo: false }, isLoading: isLoadingRoles } = useQuery({
-        queryKey: ['userRoles', address],
-        queryFn: async () => {
-            if (!address || !isConnected) return { isDesigner: false, isNgo: false };
-            return await getUserRoles(address as `0x${string}`);
-        },
-        enabled: !!address && isConnected,
-        refetchInterval: 10000,
-    });
-    const { isDesigner, isNgo } = roles;
+    const { data: ngoApplicationState, isLoading: isLoadingNgoApplication } = useNgoApplicationQuery()
+    const ngoApproved = isNgoApplicationApproved(ngoApplicationState?.data ?? null)
+
+    const { data: designerApplicationState, isLoading: isLoadingDesignerApplication } = useDesignerApplicationQuery()
+    const designerApproved = isDesignerApplicationApproved(designerApplicationState?.data ?? null)
 
     const { data: createdDesigns = [] } = useQuery<Design[]>({
         queryKey: ['userDesigns', address],
@@ -141,14 +138,14 @@ const UserProfile = () => {
     const { data: createdCampaigns = [] } = useQuery({
         queryKey: ['userCampaigns', address],
         queryFn: async () => {
-            if (!address || !isConnected || !isNgo) return [];
+            if (!address || !isConnected || !ngoApproved) return [];
             try {
                 return await listCampaignsByNGO(address);
             } catch {
                 return [];
             }
         },
-        enabled: !!address && isConnected && !!isNgo,
+        enabled: !!address && isConnected && ngoApproved,
         refetchOnMount: true,
         staleTime: 0,
     });
@@ -163,7 +160,7 @@ const UserProfile = () => {
         totalDesigns: createdDesigns.length
     };
 
-    const isLoading = isLoadingProfile || isLoadingRoles;
+    const isLoading = isLoadingProfile || isLoadingNgoApplication || isLoadingDesignerApplication;
 
     const saveProfileMutation = useMutation({
         mutationFn: async (updatedProfile: any) => {
@@ -258,6 +255,11 @@ const UserProfile = () => {
 
     const handleCreateCampaign = async (campaignData: any) => {
         if (inFlightRef.current) return
+        if (!isNgoApplicationApproved(ngoApplicationState?.data ?? null)) {
+            setIsCampaignCreateError(true)
+            setCampaignErrorText('Only approved NGOs can create campaigns.')
+            return
+        }
         inFlightRef.current = true
         setIsCreatingCampaign(true);
         setIsCampaignCreateError(false);
@@ -405,12 +407,12 @@ const UserProfile = () => {
                                             </>
                                         )}
                                     </button>
-                                    {isDesigner && (
+                                    {designerApproved && (
                                         <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold inline-flex items-center gap-1">
                                             🎨 Designer
                                         </span>
                                     )}
-                                    {isNgo && (
+                                    {ngoApproved && (
                                         <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold inline-flex items-center gap-1">
                                             🏢 NGO
                                         </span>
@@ -425,7 +427,7 @@ const UserProfile = () => {
                                 Edit Profile
                             </Button>
 
-                            {isDesigner ? (
+                            {designerApproved ? (
                                 <Button
                                     variant="primary-bw"
                                     size="lg"
@@ -447,7 +449,7 @@ const UserProfile = () => {
                                 </Button>
                             )}
 
-                            {isNgo ? (
+                            {ngoApproved ? (
                                 <Button
                                     variant="primary-bw"
                                     size="lg"
@@ -488,7 +490,7 @@ const UserProfile = () => {
                         </div>
 
 
-                        {isDesigner && (
+                        {designerApproved && (
                             <div className="bg-black rounded-lg p-6">
                                 <h3 className="text-white text-sm font-medium mb-2">Total Profit</h3>
                                 <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalProfit.toLocaleString()} HBAR</p>
@@ -496,14 +498,14 @@ const UserProfile = () => {
                         )}
 
 
-                        {isDesigner && (
+                        {designerApproved && (
                             <div className="bg-black rounded-lg p-6">
                                 <h3 className="text-white text-sm font-medium mb-2">Total Designs</h3>
                                 <p className="text-white text-3xl md:text-4xl font-bold">{statistics.totalDesigns}</p>
                             </div>
                         )}
 
-                        {isNgo && (
+                        {ngoApproved && (
                             <div className="bg-black rounded-lg p-6">
                                 <h3 className="text-white text-sm font-medium mb-2">Total Campaigns</h3>
                                 <p className="text-white text-3xl md:text-4xl font-bold">{createdCampaigns.length}</p>
@@ -530,7 +532,7 @@ const UserProfile = () => {
                         >
                             History
                         </Button>
-                        {isDesigner && (
+                        {designerApproved && (
                             <Button
                                 variant={activeCategory === 'Created' ? 'primary-bw' : 'secondary'}
                                 size="lg"
@@ -539,7 +541,7 @@ const UserProfile = () => {
                                 Created
                             </Button>
                         )}
-                        {isNgo && (
+                        {ngoApproved && (
                             <Button
                                 variant={activeCategory === 'Campaigns' ? 'primary-bw' : 'secondary'}
                                 size="lg"
@@ -736,7 +738,7 @@ const UserProfile = () => {
                                     <div className="text-6xl mb-4">🎨</div>
                                     <h3 className="text-xl font-semibold text-gray-600 mb-2">No designs created yet</h3>
                                     <p className="text-gray-500 mb-6">Start creating your first design to see it here!</p>
-                                    {isDesigner ? (
+                                    {designerApproved ? (
                                         <Button
                                             variant="primary-bw"
                                             size="lg"
@@ -762,7 +764,7 @@ const UserProfile = () => {
                         </div>
                     )}
 
-                    {activeCategory === 'Campaigns' && isNgo && (
+                    {activeCategory === 'Campaigns' && ngoApproved && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-40">
                             {createdCampaigns.length > 0 ? (
                                 createdCampaigns.map((campaign) => (
@@ -961,12 +963,12 @@ const UserProfile = () => {
                 </div>
             )}
 
-            {isCreateCampaignModalOpen && (
+            {isCreateCampaignModalOpen && ngoApproved && (
                 <CreateCampaignModal
                     isOpen={isCreateCampaignModalOpen}
                     onClose={() => {
                         setIsCreateCampaignModalOpen(false);
-                        if (address && isConnected && isNgo) {
+                        if (address && isConnected && ngoApproved) {
                             queryClient.invalidateQueries({ queryKey: ['userCampaigns', address] });
                         }
                     }}

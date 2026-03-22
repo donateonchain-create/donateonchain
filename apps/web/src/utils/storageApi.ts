@@ -7,9 +7,12 @@ import { getAuthHeaders } from '../api/auth'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
 const isDev = import.meta.env.DEV
 
-// For public reads — no auth headers attached
 async function apiJsonRead(path: string, init?: RequestInit) {
   const headers = new Headers(init?.headers || {})
+  const authHeaders = getAuthHeaders()
+  for (const [k, v] of Object.entries(authHeaders)) {
+    headers.set(k, v)
+  }
   const res = await fetch(`${API_URL}${path}`, { ...init, headers })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -690,6 +693,52 @@ export const getDesignerApplicationByWallet = async (walletAddress: string) => {
     }
     return null
   }
+}
+
+export function upsertDesignerApplicationLocal(designerData: { walletAddress: string; connectedWalletAddress?: string; [key: string]: unknown }) {
+  const w = String(designerData.walletAddress || '').toLowerCase()
+  if (!w) return
+  try {
+    const designers = getStorageJson<any[]>('designers', [])
+    const row = {
+      ...designerData,
+      status: designerData.status ?? 'pending',
+      connectedWalletAddress: designerData.connectedWalletAddress || designerData.walletAddress,
+    }
+    const idx = designers.findIndex(
+      (d: any) => String(d.connectedWalletAddress || d.walletAddress || '').toLowerCase() === w
+    )
+    if (idx >= 0) designers[idx] = { ...designers[idx], ...row }
+    else designers.push(row)
+    localStorage.setItem('designers', JSON.stringify(designers))
+  } catch {
+    //
+  }
+}
+
+export async function fetchDesignerApplicationState(
+  walletAddress: string
+): Promise<{ hasApplied: boolean; data: any | null }> {
+  if (!walletAddress) return { hasApplied: false, data: null }
+  try {
+    const existing = await getDesignerApplicationByWallet(walletAddress)
+    if (existing) return { hasApplied: true, data: existing }
+  } catch {
+    //
+  }
+  const designers = getStorageJson<any[]>('designers', [])
+  const userDesigner = designers.find(
+    (designer: any) =>
+      designer.connectedWalletAddress?.toLowerCase() === walletAddress.toLowerCase() ||
+      designer.walletAddress?.toLowerCase() === walletAddress.toLowerCase()
+  )
+  if (userDesigner) return { hasApplied: true, data: userDesigner }
+  return { hasApplied: false, data: null }
+}
+
+export function isDesignerApplicationApproved(data: any | null | undefined): boolean {
+  if (!data) return false
+  return data.status === 'approved'
 }
 
 export const deleteDesignerApplication = async (walletAddress: string) => {

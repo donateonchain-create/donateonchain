@@ -5,16 +5,18 @@ import { useAuth } from '../context/AuthContext'
 import { getKycVerifications } from '../api'
 import KycModal from './KycModal'
 import { isKycVerifiedOnChain } from '../onchain/adapter'
-import { isNgoApplicationApproved } from '../utils/storageApi'
+import { isDesignerApplicationApproved, isNgoApplicationApproved } from '../utils/storageApi'
 import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
+import { useDesignerApplicationQuery } from '../hooks/useDesignerApplicationQuery'
 
 interface PrivateRouteProps {
     children: React.ReactNode
     mode?: 'auth' | 'kyc'
     requireNgoApproved?: boolean
+    requireDesignerApproved?: boolean
 }
 
-const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false }: PrivateRouteProps) => {
+const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false, requireDesignerApproved = false }: PrivateRouteProps) => {
     const { isConnected, status } = useAccount()
     const { isAuthenticated, isSigningIn, signIn } = useAuth()
     const location = useLocation()
@@ -22,6 +24,9 @@ const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false }: P
     const { address } = useAccount()
     const { data: ngoApplicationState, isLoading: isNgoApplicationLoading } = useNgoApplicationQuery({
         enabled: requireNgoApproved,
+    })
+    const { data: designerApplicationState, isLoading: isDesignerApplicationLoading } = useDesignerApplicationQuery({
+        enabled: requireDesignerApproved,
     })
     const { data: kycData, isLoading: isKycLoading, isError: isKycError, refetch: refetchKyc } = useQuery({
         queryKey: ['routeKyc', address],
@@ -58,6 +63,22 @@ const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false }: P
         const ngoData = ngoApplicationState?.data ?? null
         if (!ngoApplicationState?.hasApplied || !isNgoApplicationApproved(ngoData)) {
             return <Navigate to="/become-an-ngo" replace state={{ from: location }} />
+        }
+    }
+
+    if (requireDesignerApproved) {
+        if (isDesignerApplicationLoading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <p style={{ color: '#666', fontSize: '1rem' }}>
+                        Checking designer application…
+                    </p>
+                </div>
+            )
+        }
+        const designerData = designerApplicationState?.data ?? null
+        if (!designerApplicationState?.hasApplied || !isDesignerApplicationApproved(designerData)) {
+            return <Navigate to="/become-a-designer" replace state={{ from: location }} />
         }
     }
 

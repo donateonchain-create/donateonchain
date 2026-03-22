@@ -15,7 +15,8 @@ import { useMemo } from 'react'
 import Creatorimg from '../assets/Creator.png'
 import { getAllGlobalDesigns } from '../utils/storageApi'
 import { getStorageJson } from '../utils/safeStorage'
-import { listAllCampaignsFromChain, getUserRoles } from '../onchain/adapter'
+import { listAllCampaignsFromChain } from '../onchain/adapter'
+import { fetchDesignerApplicationState, isDesignerApplicationApproved } from '../utils/storageApi'
 import { computeCampaignPercent } from '../utils/hbar'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -137,8 +138,8 @@ const Home = () => {
     const handleGetStarted = async () => {
         if (isConnected && address) {
             try {
-                const roles = await getUserRoles(address as `0x${string}`)
-                if (roles.isDesigner) {
+                const state = await fetchDesignerApplicationState(address)
+                if (isDesignerApplicationApproved(state.data)) {
                     navigate('/create-design')
                     return
                 }

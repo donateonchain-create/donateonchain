@@ -114,11 +114,11 @@ const MainAppRoutes = () => {
                     <Route path="/product/:id" element={<ProductPage />} />
                     <Route path="/cart" element={<Cart />} />
                     <Route path="/checkout" element={<Checkout />} />
-                    <Route path="/user-profile" element={<PrivateRoute mode="kyc" requireNgoApproved><UserProfile /></PrivateRoute>} />
+                    <Route path="/user-profile" element={<PrivateRoute><UserProfile /></PrivateRoute>} />
                     <Route path="/campaign" element={<Campaign />} />
                     <Route path="/campaign/:id" element={<CampaignDetails />} />
                     <Route path="/how-it-works" element={<HowItWorks />} />
-                    <Route path="/create-design" element={<PrivateRoute requireNgoApproved><CreateDesign /></PrivateRoute>} />
+                    <Route path="/create-design" element={<PrivateRoute requireDesignerApproved><CreateDesign /></PrivateRoute>} />
                     <Route path="/become-an-ngo" element={<BecomeanNgo />} />
                     <Route path="/become-a-designer" element={<BecomeaDesigner />} />
                     <Route path="/waitlist" element={<Waitlist />} />

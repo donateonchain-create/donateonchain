@@ -1,7 +1,7 @@
 import Clothimg from "../assets/Clothimg.png";
 import { useNavigate } from 'react-router-dom'
 import { useAccount } from 'wagmi'
-import { getUserRoles } from '../onchain/adapter'
+import { fetchDesignerApplicationState, isDesignerApplicationApproved } from '../utils/storageApi'
 
 
 const Banner = () => {
@@ -10,8 +10,8 @@ const Banner = () => {
     const handleGetStarted = async () => {
       if (isConnected && address) {
         try {
-          const roles = await getUserRoles(address as `0x${string}`)
-          if (roles.isDesigner) {
+          const state = await fetchDesignerApplicationState(address)
+          if (isDesignerApplicationApproved(state.data)) {
             navigate('/create-design')
             return
           }

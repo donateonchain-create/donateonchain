@@ -9,12 +9,14 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 import { SkeletonFormApplication } from '../component/Skeleton'
 import { Upload, CheckCircle, Clock, X, ChevronDown } from 'lucide-react'
-import { saveDesignerApplication, getDesignerApplicationByWallet, deleteDesignerApplication } from '../utils/storageApi'
-import { designerRegisterPending } from '../onchain/adapter'
+import { saveDesignerApplication, deleteDesignerApplication, upsertDesignerApplicationLocal } from '../utils/storageApi'
+import { useDesignerApplicationQuery } from '../hooks/useDesignerApplicationQuery'
+import { designerRegisterPending, isKycVerifiedOnChain } from '../onchain/adapter'
 import { uploadMetadataToIPFS, getIPFSHash } from '../utils/ipfs'
 import { publicClient, read } from '../onchain/client'
 import { addresses, abis } from '../onchain/contracts'
-import { createKycVerification } from '../api'
+import { getKycVerifications } from '../api'
+import KycModal from '../component/KycModal'
 
 const BecomeaDesigner = () => {
     const navigate = useNavigate()
@@ -28,33 +30,28 @@ const BecomeaDesigner = () => {
         setTimeout(() => setToast(null), 4000)
     }
 
-    const { data: designerApplicationData, isLoading: isLoadingApplication } = useQuery({
-        queryKey: ['designerApplication', address, isConnected],
-        queryFn: async () => {
-            if (!isConnected || !address) return { hasApplied: false, data: null }
-            try {
-                const existingApplication = await getDesignerApplicationByWallet(address)
-                if (existingApplication) return { hasApplied: true, data: existingApplication }
-                const designers = getStorageJson<any[]>('designers', [])
-                const userDesigner = designers.find((designer: any) =>
-                    designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    designer.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userDesigner) return { hasApplied: true, data: userDesigner }
-                return { hasApplied: false, data: null }
-            } catch (_error) {
-                const designers = getStorageJson<any[]>('designers', [])
-                const userDesigner = designers.find((designer: any) =>
-                    designer.connectedWalletAddress?.toLowerCase() === address.toLowerCase() ||
-                    designer.walletAddress?.toLowerCase() === address.toLowerCase()
-                )
-                if (userDesigner) return { hasApplied: true, data: userDesigner }
-                return { hasApplied: false, data: null }
-            }
-        }
-    })
+    const { data: designerApplicationData, isLoading: isLoadingApplication } = useDesignerApplicationQuery()
 
     const hasAlreadyApplied = designerApplicationData?.hasApplied ?? false
+    const kycQueriesEnabled =
+        isConnected && !!address && !isLoadingApplication && !hasAlreadyApplied
+
+    const { data: kycData, isLoading: isKycLoading, isError: isKycError, refetch: refetchKyc } = useQuery({
+        queryKey: ['becomeDesignerKyc', address],
+        queryFn: () => getKycVerifications({ walletAddress: address, page: 1, limit: 1 }),
+        enabled: kycQueriesEnabled,
+        staleTime: 30000,
+    })
+    const { data: isOnChainKyc, isLoading: isOnChainKycLoading, refetch: refetchOnChainKyc } = useQuery({
+        queryKey: ['becomeDesignerKycOnChain', address],
+        queryFn: () => isKycVerifiedOnChain(address as `0x${string}`),
+        enabled: kycQueriesEnabled,
+        staleTime: 30000,
+    })
+
+    const latestKyc = kycData?.items?.[0]
+    const kycGateOk = latestKyc?.status === 'approved' && isOnChainKyc === true
+    const [showKycModal, setShowKycModal] = useState(false)
     const existingDesignerData = designerApplicationData?.data ?? null
 
     useWatchContractEvent({
@@ -82,7 +79,6 @@ const BecomeaDesigner = () => {
     const [verificationDocument, setVerificationDocument] = useState<File | null>(null)
     const [termsAccepted, setTermsAccepted] = useState(false)
     const [originalityConfirmed, setOriginalityConfirmed] = useState(false)
-    const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -163,8 +159,6 @@ const BecomeaDesigner = () => {
 
     const handleSubmit = async () => {
         if (!address) return
-        
-        let savedOk = false
         setIsSubmitting(true)
         try {
             if (chainId && chainId !== hederaTestnet.id) {
@@ -195,6 +189,8 @@ const BecomeaDesigner = () => {
             }
 
             const metadata = {
+                role: 'designer' as const,
+                name: fullName.trim(),
                 fullName,
                 email,
                 username,
@@ -233,15 +229,15 @@ const BecomeaDesigner = () => {
                 connectedWalletAddress: address,
                 metadataHash,
                 verified: false,
+                status: 'pending',
                 createdAt: new Date().toISOString()
             }
 
-            await saveDesignerApplication(designerData)
-            savedOk = true
-            try {
-                await createKycVerification({ walletAddress: address, metadata })
-            } catch {}
-            
+            const apiSaved = await saveDesignerApplication(designerData)
+            if (!apiSaved) {
+                upsertDesignerApplicationLocal(designerData)
+            }
+
             try {
                 let needsOnChainRegistration = true
                 try {
@@ -254,8 +250,9 @@ const BecomeaDesigner = () => {
                 if (needsOnChainRegistration) {
                     const receipt = await designerRegisterPending({ name: fullName, bio: `${primaryDesignField} designer with ${experienceLevel} experience`, portfolioHash: sampleWorkHashes[0] || '', profileImageHash: '' })
                     if (receipt?.transactionHash) {
-                        const updatedDesignerData = { ...designerData, transactionHash: receipt.transactionHash }
-                        await saveDesignerApplication(updatedDesignerData)
+                        const updatedDesignerData = { ...designerData, transactionHash: receipt.transactionHash, status: 'pending' }
+                        const ok = await saveDesignerApplication(updatedDesignerData)
+                        if (!ok) upsertDesignerApplicationLocal(updatedDesignerData)
                     }
                     showToast('Designer application submitted on-chain with IPFS metadata.', 'success')
                 } else {
@@ -289,7 +286,7 @@ const BecomeaDesigner = () => {
             setSubmitError('Failed to save designer application. Please try again.')
         } finally {
             setIsSubmitting(false)
-            if (savedOk) setShowSuccessModal(true)
+            void queryClient.invalidateQueries({ queryKey: ['designerApplication'] })
         }
     }
 
@@ -517,7 +514,66 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                 </section>
             )}
 
-            {isConnected && !isLoadingApplication && !hasAlreadyApplied && (
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && (isKycLoading || isOnChainKycLoading) && (
+                <SkeletonFormApplication />
+            )}
+
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && isKycError && (
+                <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[50vh] flex items-center">
+                    <div className="max-w-2xl mx-auto w-full text-center">
+                        <p className="text-gray-600 mb-4">Unable to verify KYC status right now. Try again shortly.</p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                void refetchKyc()
+                                void refetchOnChainKyc()
+                            }}
+                            className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                </section>
+            )}
+
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && !isKycError && !kycGateOk && (
+                <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
+                    <div className="max-w-2xl mx-auto w-full">
+                        <div className="bg-white rounded-2xl p-8 md:p-12 text-center shadow-sm">
+                            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </div>
+                            <h2 className="text-2xl md:text-3xl font-bold text-black mb-4">Verify your identity first</h2>
+                            <p className="text-gray-600 mb-6">
+                                Complete KYC verification (approved in review and on-chain) before you can submit a designer application.
+                            </p>
+                            <div className="flex flex-wrap items-center justify-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowKycModal(true)}
+                                    className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800"
+                                >
+                                    Open verification
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        void refetchKyc()
+                                        void refetchOnChainKyc()
+                                    }}
+                                    className="bg-white text-black border border-gray-300 rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-50"
+                                >
+                                    Refresh status
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            )}
+
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && !isKycError && kycGateOk && (
                 <section className="px-4 md:px-7 py-12 bg-gray-50">
                     <div className="max-w-4xl mx-auto">
                 
@@ -970,25 +1026,17 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                 </div>
             )}
 
-            {showSuccessModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl p-8 max-w-md text-center">
-                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <CheckCircle className="w-10 h-10 text-green-600" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-black mb-4">Application Submitted!</h2>
-                        <p className="text-gray-600 mb-6">Your designer application has been submitted successfully. Our team will review it shortly.</p>
-                        <button
-                            onClick={() => {
-                                setShowSuccessModal(false)
-                                setHasAlreadyApplied(true)
-                            }}
-                            className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800 transition-colors"
-                        >
-                            View Status
-                        </button>
-                    </div>
-                </div>
+            {address && isConnected && !hasAlreadyApplied && !isLoadingApplication && (
+                <KycModal
+                    isOpen={showKycModal}
+                    walletAddress={address}
+                    onClose={() => setShowKycModal(false)}
+                    onApproved={async () => {
+                        await refetchKyc()
+                        await refetchOnChainKyc()
+                        setShowKycModal(false)
+                    }}
+                />
             )}
 
             <Footer />

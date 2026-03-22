@@ -229,6 +229,7 @@ const BecomeanNgo = () => {
             }
 
             const metadata = {
+                role: 'ngo' as const,
                 name: ngoName,
                 email,
                 phoneNumber,
