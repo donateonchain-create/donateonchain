@@ -2,13 +2,103 @@ import { abis, addresses, roles } from './contracts'
 import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
 import { getIPFSURL } from '../utils/ipfs'
-import { keccak256, stringToHex, decodeEventLog, decodeErrorResult, formatUnits } from 'viem'
-import { formatHbarDisplay } from '../utils/hbar'
+import { keccak256, stringToHex, decodeEventLog, formatUnits, parseEther } from 'viem'
+import { formatHbarDisplay, weiToHbar } from '../utils/hbar'
+import { interpretDonationWriteError, MIN_DONATION_HBAR, MIN_DONATION_WEI } from './contractErrors'
+
+export { MIN_DONATION_HBAR, MIN_DONATION_WEI }
 
 const CONTRACT = addresses.DONATE_ON_CHAIN as HexAddress
 const ABI = abis.DonateOnChain as any
 
 const CampaignState = { Pending_Vetting: 0, Active: 1, Goal_Reached: 2, Failed_Refundable: 3, Closed: 4 } as const
+
+const CAMPAIGN_STATUS_WORDS = [
+  'pending admin approval',
+  'active',
+  'goal reached',
+  'ended (refunds available)',
+  'closed',
+] as const
+
+const ZERO = '0x0000000000000000000000000000000000000000' as HexAddress
+
+function parseHbarInputToWei(input: string): bigint {
+  const s = input.trim().replace(/,/g, '')
+  if (!s) {
+    throw new Error('Donation amount must be greater than zero')
+  }
+  try {
+    return parseEther(s)
+  } catch {
+    throw new Error('Invalid donation amount')
+  }
+}
+
+async function assertDonationAllowed(params: { campaignId: bigint; valueWei: bigint; donor: HexAddress }) {
+  const { campaignId, valueWei, donor } = params
+  if (valueWei < MIN_DONATION_WEI) {
+    throw new Error(`The minimum donation is ${MIN_DONATION_HBAR} HBAR.`)
+  }
+
+  let paused = false
+  let kyc = false
+  let blacklisted = false
+  try {
+    ;[paused, kyc, blacklisted] = await Promise.all([
+      read<boolean>({ address: CONTRACT, abi: ABI, functionName: 'paused', args: [] }),
+      read<boolean>({ address: CONTRACT, abi: ABI, functionName: 'isKycVerified', args: [donor] }),
+      read<boolean>({ address: CONTRACT, abi: ABI, functionName: 'isBlacklisted', args: [donor] }),
+    ])
+  } catch {
+    throw new Error('Could not read contract state. Check your network connection and try again.')
+  }
+
+  if (paused) {
+    throw new Error('Donations are temporarily paused by the platform. Please try again later.')
+  }
+  if (!kyc) {
+    throw new Error('Your wallet must be KYC verified on-chain before you can donate.')
+  }
+  if (blacklisted) {
+    throw new Error('Your account cannot make donations at this time.')
+  }
+
+  const campaign = await getCampaign(campaignId)
+  const ngo = campaign.ngo ? String(campaign.ngo).toLowerCase() : ''
+  if (!ngo || ngo === ZERO.toLowerCase()) {
+    throw new Error(`Campaign ${campaignId} was not found on-chain.`)
+  }
+
+  const now = BigInt(Math.floor(Date.now() / 1000))
+  if (campaign.deadline !== undefined && campaign.deadline > 0n && now > campaign.deadline) {
+    throw new Error('This campaign’s deadline has passed. Donations are no longer accepted.')
+  }
+
+  const state = campaign.state ?? CampaignState.Pending_Vetting
+  if (state !== CampaignState.Active) {
+    const label = CAMPAIGN_STATUS_WORDS[state] ?? 'unknown'
+    throw new Error(
+      `This campaign is not accepting donations (status: ${label}). It must be approved and active before you can donate.`
+    )
+  }
+
+  let raised: bigint
+  try {
+    raised = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignBalance', args: [campaignId] })
+  } catch {
+    throw new Error('Could not read campaign balance. Try again in a moment.')
+  }
+
+  const target = campaign.goalHBAR
+  const remaining = target > raised ? target - raised : 0n
+  if (valueWei > remaining) {
+    const remHbar = formatHbarDisplay(Number(formatUnits(remaining, 18)))
+    throw new Error(
+      `This amount exceeds what is left to reach the campaign goal. You can donate up to ${remHbar} HBAR more.`
+    )
+  }
+}
 
 function toWei(hbar: number) {
   // Hedera EVM uses weibars (18 decimals) matching Ethereum — relay converts to tinybars internally
@@ -112,8 +202,7 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
 
         let amountRaised = 0
         try {
-          const donations = await getDonationsByCampaign(id)
-          amountRaised = donations.totalRaisedHBAR
+          amountRaised = await getCampaignRaisedHBAR(id)
         } catch {
           //
         }
@@ -122,7 +211,7 @@ export async function listAllCampaignsFromChain(): Promise<any[]> {
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = Number(chainCampaign.goalHBAR) / 1e18
+        let target = weiToHbar(chainCampaign.goalHBAR)
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
           image = getIPFSURL(chainCampaign.image)
@@ -179,15 +268,14 @@ export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
         const chainCampaign = await getCampaign(id)
         let amountRaised = 0
         try {
-          const donations = await getDonationsByCampaign(id)
-          amountRaised = donations.totalRaisedHBAR
+          amountRaised = await getCampaignRaisedHBAR(id)
         } catch { }
 
         let title = chainCampaign.title || ''
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = Number(chainCampaign.goalHBAR) / 1e18 // convert weibars → HBAR
+        let target = weiToHbar(chainCampaign.goalHBAR)
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
           image = getIPFSURL(chainCampaign.image)
@@ -327,13 +415,13 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
       if (onchainId) {
         try {
           const chainCampaign = await getCampaign(onchainId)
-          const donations = await getDonationsByCampaign(onchainId)
+          const raisedHbar = await getCampaignRaisedHBAR(onchainId)
           syncedCampaigns.push({
             ...storedCampaign,
             id: Number(onchainId),
             onchainId: Number(onchainId),
-            amountRaised: donations.totalRaisedHBAR,
-            goal: Number(chainCampaign.goalHBAR) / 1e18, // convert weibars → HBAR
+            amountRaised: raisedHbar,
+            goal: weiToHbar(chainCampaign.goalHBAR),
             active: chainCampaign.active ?? true,
             ngoWallet: chainCampaign.ngo,
           })
@@ -518,13 +606,19 @@ export async function getDesignerProfile(owner: HexAddress): Promise<DesignerPro
   return { owner, name: '', bio: '', image: undefined }
 }
 
-export async function donate(params: { campaignId: bigint; valueHBAR: number; metadataHash?: string }) {
-  if (params.valueHBAR <= 0) {
+export async function donate(params: { campaignId: bigint; valueHbarDecimal: string; metadataHash?: string; donor: HexAddress }) {
+  const valueWei = parseHbarInputToWei(params.valueHbarDecimal)
+  if (valueWei === 0n) {
     throw new Error('Donation amount must be greater than zero')
   }
 
-  const value = toWei(params.valueHBAR)
   const metadataHash = params.metadataHash || ''
+
+  await assertDonationAllowed({
+    campaignId: params.campaignId,
+    valueWei,
+    donor: params.donor,
+  })
 
   try {
     const hash = await write({
@@ -532,56 +626,17 @@ export async function donate(params: { campaignId: bigint; valueHBAR: number; me
       abi: ABI,
       functionName: 'contribute',
       args: [params.campaignId, metadataHash],
-      value,
+      value: valueWei,
     })
     return await wait(hash)
-  } catch (error: any) {
-    const errorData = error?.data || error?.cause?.data || error?.reason
-    if (typeof errorData === 'string' && errorData.startsWith('0x') && errorData.length >= 10) {
-      try {
-        const decoded = decodeErrorResult({ abi: ABI, data: errorData as `0x${string}` })
-        if (decoded.errorName === 'DonationExceedsRemaining') {
-          const remainingWei = decoded.args[0] as bigint
-          const remHbar = formatHbarDisplay(Number(formatUnits(remainingWei, 18)))
-          throw new Error(
-            `This amount exceeds what is left to reach the campaign target. You can donate up to ${remHbar} HBAR more.`
-          )
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('exceeds what is left')) throw e
-      }
-    }
-    const errorSignature = typeof errorData === 'string' && errorData.startsWith('0x') ? errorData.slice(0, 10) : null
-
-    if (errorSignature) {
-      switch (errorSignature) {
-        case '0x2c067cd7':
-          throw new Error('Campaign is not active. Donations are not currently accepted for this campaign.')
-        case '0xae921357':
-          throw new Error(`Campaign ${params.campaignId} not found on-chain. The campaign may not exist or may have been removed.`)
-        case '0x1f2a2005':
-          throw new Error('Transfer failed. Unable to send funds. Please try again.')
-        case '0x8456cb59':
-          throw new Error('Reentrancy guard activated. Please wait and try again.')
-      }
-    }
-
-    const msg = (error?.message || error?.shortMessage || '').toLowerCase()
-    if (msg.includes('inactive') || msg.includes('invalidcampaignstate')) {
-      throw new Error('Campaign is not active. Donations are not currently accepted for this campaign.')
-    }
-    if (msg.includes('notkyc') || msg.includes('kyc')) {
-      throw new Error('Your account must be KYC verified to donate.')
-    }
-    if (msg.includes('belowminimum')) {
-      throw new Error('Donation amount must be at least 0.01 HBAR.')
-    }
-    if (msg.includes('blacklist')) {
-      throw new Error('Your account cannot make donations at this time.')
-    }
-
-    throw new Error(`Donation failed: ${error?.message || error?.shortMessage || 'Unknown error. Please verify the campaign exists and try again.'}`)
+  } catch (error: unknown) {
+    throw interpretDonationWriteError(error, { campaignId: params.campaignId, valueWei })
   }
+}
+
+export async function getCampaignRaisedHBAR(campaignId: bigint): Promise<number> {
+  const wei = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignBalance', args: [campaignId] })
+  return weiToHbar(wei)
 }
 
 export async function getDonationsByCampaign(campaignId: bigint) {
@@ -611,12 +666,19 @@ export async function getDonationsByCampaign(campaignId: bigint) {
     }
   }
 
+  let raisedWei = totalRaised
+  try {
+    raisedWei = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignBalance', args: [campaignId] })
+  } catch {
+    //
+  }
+
   return {
     donors,
     amounts,
     timestamps,
     nftSerialNumbers,
-    totalRaisedHBAR: Number(totalRaised) / 1e18, // weibars → HBAR
+    totalRaisedHBAR: weiToHbar(raisedWei),
     count: donors.length,
   }
 }

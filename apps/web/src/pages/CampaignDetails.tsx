@@ -11,7 +11,18 @@ import EditCampaignModal from '../component/EditCampaignModal'
 import KycModal from '../component/KycModal'
 import { Loader2, Check, Gift, Trash, Calendar, Users } from 'lucide-react'
 import { SkeletonCampaignDetail } from '../component/Skeleton'
-import { donate, getCampaign as onchainGetCampaign, getDonationsByCampaign as onchainGetDonationsByCampaign, updateCampaignOnChain, deactivateCampaign, getCampaignMetadataCid, listAllCampaignsFromChain, isKycVerifiedOnChain } from '../onchain/adapter'
+import {
+    donate,
+    getCampaign as onchainGetCampaign,
+    getCampaignRaisedHBAR,
+    getDonationsByCampaign as onchainGetDonationsByCampaign,
+    updateCampaignOnChain,
+    deactivateCampaign,
+    getCampaignMetadataCid,
+    listAllCampaignsFromChain,
+    isKycVerifiedOnChain,
+    MIN_DONATION_HBAR,
+} from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
 import { createDonation, mintDonationNFT, getKycVerifications } from '../api'
 import type { DonationEventApi } from '../types/api'
@@ -105,13 +116,33 @@ const CampaignDetails = () => {
         queryFn: async () => {
             if (!id) return null;
             const cacheKey = `campaign_detail_v3_${id}`
+            const numericId = BigInt(id || '0')
+
+            let amountRaised = 0
+            try {
+                amountRaised = await getCampaignRaisedHBAR(numericId)
+            } catch {
+                try {
+                    const donations = await onchainGetDonationsByCampaign(numericId)
+                    amountRaised = donations.totalRaisedHBAR
+                } catch {}
+            }
+
             const cached = getCache(cacheKey)
-            if (cached) return normalizeCampaignAmounts(cached)
+            if (cached) {
+                const target = Number(cached.target ?? 0) || 0
+                const merged = {
+                    ...cached,
+                    amountRaised,
+                    percentage: target > 0 ? (amountRaised / target) * 100 : 0,
+                }
+                const normalized = normalizeCampaignAmounts(merged)
+                setCache(cacheKey, normalized)
+                return normalized
+            }
 
             try {
-                const numericId = BigInt(id || '0')
                 const chainCampaign = await onchainGetCampaign(numericId)
-                let amountRaised = 0
                 let metaImage: string | undefined = undefined
                 let metaGoal: number | string | undefined = undefined
                 let metaTitle = ''
@@ -142,11 +173,6 @@ const CampaignDetails = () => {
                 if (!chainCampaign && !metaLoaded) {
                     return null
                 }
-                
-                try {
-                    const donations = await onchainGetDonationsByCampaign(numericId)
-                    amountRaised = donations.totalRaisedHBAR
-                } catch {}
 
                 const metaGoalNum =
                     metaGoal !== undefined && metaGoal !== null && metaGoal !== ''
@@ -189,7 +215,9 @@ const CampaignDetails = () => {
             } catch {
                 return null
             }
-        }
+        },
+        staleTime: 0,
+        refetchOnWindowFocus: true,
     })
 
     const { data: allCampaigns = [], isLoading: isRelatedLoading } = useQuery({
@@ -217,18 +245,27 @@ const CampaignDetails = () => {
         }
     })
 
+    const chainIdForQueries =
+        campaign?.onchainId != null
+            ? BigInt(campaign.onchainId)
+            : campaign?.id != null
+              ? BigInt(campaign.id)
+              : id && /^\d+$/.test(String(id).trim())
+                ? BigInt(String(id).trim())
+                : 0n
+
     const { data: donationActivity = [] } = useQuery({
-        queryKey: ['campaign_donations', id],
+        queryKey: ['campaign_donations', id, String(chainIdForQueries)],
         queryFn: async () => {
-            if (!id) return []
+            if (!id || chainIdForQueries === 0n) return []
             try {
-                const raw = await onchainGetDonationsByCampaign(BigInt(id))
+                const raw = await onchainGetDonationsByCampaign(chainIdForQueries)
                 return donationEventsFromChain(id, raw).slice(0, 50)
             } catch {
                 return []
             }
         },
-        enabled: !!id
+        enabled: !!id && chainIdForQueries !== 0n,
     })
 
     const isLoading = isCampaignLoading || isRelatedLoading
@@ -278,6 +315,10 @@ const CampaignDetails = () => {
         donationAmount.trim() !== '' &&
         !Number.isNaN(parsedDonationAmount) &&
         donationAmountExceedsRemaining(parsedDonationAmount, remainingToTargetHBAR)
+    const donationBelowMinimum =
+        donationAmount.trim() !== '' &&
+        !Number.isNaN(parsedDonationAmount) &&
+        parsedDonationAmount < MIN_DONATION_HBAR
 
     const performDonation = async () => {
         if (!donationAmount.trim() || !isConnected) return
@@ -296,6 +337,10 @@ const CampaignDetails = () => {
             )
             return
         }
+        if (value < MIN_DONATION_HBAR) {
+            setDonationError(`Minimum donation is ${MIN_DONATION_HBAR} HBAR.`)
+            return
+        }
 
         setIsDonating(true)
         setDonationError(null)
@@ -303,8 +348,16 @@ const CampaignDetails = () => {
         setTxHash(null)
         
         try {
+            if (!address) {
+                setDonationError('Connect your wallet to donate.')
+                return
+            }
             const campaignIdForChain = campaign?.onchainId ? BigInt(campaign.onchainId) : (campaign?.id ? BigInt(campaign.id) : BigInt(id || '0'))
-            const receipt = await donate({ campaignId: campaignIdForChain, valueHBAR: value })
+            const receipt = await donate({
+                campaignId: campaignIdForChain,
+                valueHbarDecimal: donationAmount.trim(),
+                donor: address as `0x${string}`,
+            })
             setTxHash(receipt.transactionHash)
             setDonationSuccess(true)
             setDonationAmount('')
@@ -330,10 +383,14 @@ const CampaignDetails = () => {
             // Bust localStorage cache so query re-fetches fresh on-chain data
             localStorage.removeItem(`campaign_detail_v3_${id}`)
             localStorage.removeItem(`campaign_${id}`)
-            const numericId = BigInt(id || '0')
-            const donations = await onchainGetDonationsByCampaign(numericId)
+            let updatedAmountRaised = 0
+            try {
+                updatedAmountRaised = await getCampaignRaisedHBAR(campaignIdForChain)
+            } catch {
+                const donations = await onchainGetDonationsByCampaign(campaignIdForChain)
+                updatedAmountRaised = donations.totalRaisedHBAR
+            }
             const goal = campaign.target || 0
-            const updatedAmountRaised = donations.totalRaisedHBAR
             const updatedPercentage = goal > 0 ? (updatedAmountRaised / goal) * 100 : 0
             const prevCount =
                 typeof campaign.donationCount === 'number' ? campaign.donationCount : donationActivity.length
@@ -383,6 +440,10 @@ const CampaignDetails = () => {
             setDonationError(
                 `You can donate up to ${formatHbarDisplay(remainingToTargetHBAR)} HBAR to reach the campaign target.`
             )
+            return
+        }
+        if (value < MIN_DONATION_HBAR) {
+            setDonationError(`Minimum donation is ${MIN_DONATION_HBAR} HBAR.`)
             return
         }
         try {
@@ -569,6 +630,7 @@ const CampaignDetails = () => {
                                     {remainingToTargetHBAR > 0 ? (
                                         <p className="mb-2 text-sm text-gray-600">
                                             Up to {formatHbarDisplay(remainingToTargetHBAR)} HBAR left to reach the goal.
+                                            Minimum {MIN_DONATION_HBAR} HBAR per donation.
                                         </p>
                                     ) : (
                                         <p className="mb-2 text-sm text-amber-800">
@@ -580,16 +642,16 @@ const CampaignDetails = () => {
                                         <input
                                             type="number"
                                             step="0.01"
-                                            min="0"
+                                            min={MIN_DONATION_HBAR}
                                             value={donationAmount}
                                             onChange={(e) => {
                                                 setDonationAmount(e.target.value)
                                                 setDonationError(null)
                                             }}
                                             placeholder="0.00"
-                                            aria-invalid={donationExceedsRemaining}
+                                            aria-invalid={donationExceedsRemaining || donationBelowMinimum}
                                             className={`w-full pl-16 pr-4 py-3 rounded-lg text-lg focus:outline-none focus:ring-2 focus:border-transparent ${
-                                                donationExceedsRemaining
+                                                donationExceedsRemaining || donationBelowMinimum
                                                     ? 'border-2 border-red-500 focus:ring-red-400'
                                                     : 'border border-gray-300 focus:ring-[#4ADE80]'
                                             }`}
@@ -610,13 +672,14 @@ const CampaignDetails = () => {
                                     size="lg"
                                     onClick={handleDonate}
                                     className="w-full rounded-lg py-4 text-lg"
-                                    disabled={
+                                        disabled={
                                         !donationAmount.trim() ||
                                         !isConnected ||
                                         isDonating ||
                                         campaign.active === false ||
                                         remainingToTargetHBAR <= 0 ||
-                                        donationExceedsRemaining
+                                        donationExceedsRemaining ||
+                                        donationBelowMinimum
                                     }
                                 >
                                     {isDonating ? 'Processing Donation...' : campaign.active === false ? 'Campaign Inactive' : isConnected ? 'Make Donation' : 'Connect Wallet to Donate'}

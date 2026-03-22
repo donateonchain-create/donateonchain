@@ -11,26 +11,7 @@ import ShopImg from '../assets/ShopImg.png'
 import { ChevronDown } from 'lucide-react'
 import { listAllCampaignsFromChain } from '../onchain/adapter'
 import { getCampaigns } from '../api'
-import { computeCampaignPercent, mergeCampaignRaisedHBAR, normalizeCampaignAmounts, weiToHbar } from '../utils/hbar'
-
-const CACHE_TTL_MS = 5 * 60 * 1000
-
-const getCache = (key: string) => {
-    const raw = localStorage.getItem(key)
-    if (!raw) return null
-    try {
-        const parsed = JSON.parse(raw)
-        if (!parsed || !parsed.data || !parsed.ts) return null
-        if (Date.now() - parsed.ts > CACHE_TTL_MS) return null
-        return parsed.data
-    } catch { return null }
-}
-
-const setCache = (key: string, data: any) => {
-    try {
-        localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
-    } catch {}
-}
+import { computeCampaignPercent, normalizeCampaignAmounts, weiToHbar } from '../utils/hbar'
 
 const Campaign = () => {
     const navigate = useNavigate()
@@ -41,15 +22,10 @@ const Campaign = () => {
 
     const { isLoading } = useQuery({
         queryKey: ['campaigns_all'],
+        staleTime: 0,
+        refetchOnWindowFocus: true,
         queryFn: async () => {
             try {
-                const cacheKey = 'campaigns_all_v2'
-                const cached = getCache(cacheKey)
-                if (cached) {
-                    setAllCampaigns(cached)
-                    setFilteredCampaigns(cached)
-                    return cached
-                }
                 const [onchain, apiResult] = await Promise.all([
                     listAllCampaignsFromChain(),
                     getCampaigns({ limit: 200 }).catch(() => ({ items: [] })),
@@ -62,8 +38,7 @@ const Campaign = () => {
                         (backend?.targetAmount ? weiToHbar(backend.targetAmount) : 0) ||
                         0
                     const chainRaised = Number(c.amountRaised) || 0
-                    const raised = mergeCampaignRaisedHBAR(chainRaised, backend || undefined)
-                    const category = (c.category || '')
+                    const category = (backend?.category || c.category || '')
                         .toString()
                         .trim()
                         .toLowerCase()
@@ -72,12 +47,11 @@ const Campaign = () => {
                         ...c,
                         category,
                         target,
-                        amountRaised: raised,
+                        amountRaised: chainRaised,
                     })
                 })
                 setAllCampaigns(withPercent)
                 setFilteredCampaigns(withPercent)
-                setCache(cacheKey, withPercent)
                 return withPercent
             } catch (error) {
                 return []
