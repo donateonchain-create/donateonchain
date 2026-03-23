@@ -23,7 +23,6 @@ import {
     isKycVerifiedOnChain,
     MIN_DONATION_HBAR,
     CampaignState,
-    isCampaignIdInPublicAllowlist,
 } from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
 import { createDonation, mintDonationNFT, getKycVerifications } from '../api'

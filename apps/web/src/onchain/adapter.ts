@@ -2,7 +2,7 @@ import { abis, addresses, roles } from './contracts'
 import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
 import { getIPFSURL } from '../utils/ipfs'
-import { keccak256, stringToHex, decodeEventLog, formatUnits, parseEther } from 'viem'
+import { keccak256, stringToHex, decodeEventLog, parseEther } from 'viem'
 import { formatHbarDisplay, targetAmountToHbar, weiToHbar } from '../utils/hbar'
 import { interpretDonationWriteError, MIN_DONATION_HBAR, MIN_DONATION_WEI } from './contractErrors'
 
