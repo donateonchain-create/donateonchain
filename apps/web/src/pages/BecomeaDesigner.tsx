@@ -33,8 +33,7 @@ const BecomeaDesigner = () => {
     const { data: designerApplicationData, isLoading: isLoadingApplication } = useDesignerApplicationQuery()
 
     const hasAlreadyApplied = designerApplicationData?.hasApplied ?? false
-    const kycQueriesEnabled =
-        isConnected && !!address && !isLoadingApplication && !hasAlreadyApplied
+    const kycQueriesEnabled = isConnected && !!address && !hasAlreadyApplied
 
     const { data: kycData, isLoading: isKycLoading, isError: isKycError, refetch: refetchKyc } = useQuery({
         queryKey: ['becomeDesignerKyc', address],
@@ -214,6 +213,7 @@ const BecomeaDesigner = () => {
 
             const designerData: any = {
                 id: Date.now(),
+                applicationKind: 'designer' as const,
                 fullName,
                 email,
                 username,
@@ -518,25 +518,7 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                 <SkeletonFormApplication />
             )}
 
-            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && isKycError && (
-                <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[50vh] flex items-center">
-                    <div className="max-w-2xl mx-auto w-full text-center">
-                        <p className="text-gray-600 mb-4">Unable to verify KYC status right now. Try again shortly.</p>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                void refetchKyc()
-                                void refetchOnChainKyc()
-                            }}
-                            className="bg-black text-white rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-800"
-                        >
-                            Retry
-                        </button>
-                    </div>
-                </section>
-            )}
-
-            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && !isKycError && !kycGateOk && (
+            {isConnected && !isLoadingApplication && !hasAlreadyApplied && !(isKycLoading || isOnChainKycLoading) && !kycGateOk && (
                 <section className="px-4 md:px-7 py-20 bg-gray-50 min-h-[60vh] flex items-center">
                     <div className="max-w-2xl mx-auto w-full">
                         <div className="bg-white rounded-2xl p-8 md:p-12 text-center shadow-sm">
@@ -546,9 +528,33 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                                 </svg>
                             </div>
                             <h2 className="text-2xl md:text-3xl font-bold text-black mb-4">Verify your identity first</h2>
-                            <p className="text-gray-600 mb-6">
-                                Complete KYC verification (approved in review and on-chain) before you can submit a designer application.
-                            </p>
+                            {isKycError ? (
+                                <p className="text-gray-600 mb-4">
+                                    We could not load your verification status. Check your connection, then retry or open verification below.
+                                </p>
+                            ) : (
+                                <p className="text-gray-600 mb-4">
+                                    Complete the steps below before you can submit a designer application. Being an NGO does not block you; you still complete the same checks.
+                                </p>
+                            )}
+                            <ul className="text-left text-sm text-gray-700 space-y-2 mb-6 max-w-md mx-auto list-disc pl-5">
+                                <li>KYC approved in our review (wallet-linked).</li>
+                                <li>Same wallet verified on-chain (admin approval after KYC).</li>
+                                <li>Wallet on Hedera Testnet with a small HBAR balance for transactions when you submit.</li>
+                                <li>Portfolio link and sample work ready for the application form.</li>
+                            </ul>
+                            {!isKycError && (
+                                <div className="text-left text-xs text-gray-500 mb-6 max-w-md mx-auto space-y-1">
+                                    <p>
+                                        <span className="font-medium text-gray-700">In-app KYC:</span>{' '}
+                                        {latestKyc?.status === 'approved' ? 'Approved' : latestKyc?.status ? String(latestKyc.status) : 'Not found or pending'}
+                                    </p>
+                                    <p>
+                                        <span className="font-medium text-gray-700">On-chain:</span>{' '}
+                                        {isOnChainKyc === true ? 'Verified' : isOnChainKyc === false ? 'Not verified yet' : '—'}
+                                    </p>
+                                </div>
+                            )}
                             <div className="flex flex-wrap items-center justify-center gap-3">
                                 <button
                                     type="button"
@@ -565,7 +571,7 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                                     }}
                                     className="bg-white text-black border border-gray-300 rounded-full px-8 py-3 text-sm font-semibold hover:bg-gray-50"
                                 >
-                                    Refresh status
+                                    {isKycError ? 'Retry' : 'Refresh status'}
                                 </button>
                             </div>
                         </div>
@@ -1030,11 +1036,17 @@ queryClient.invalidateQueries({ queryKey: ['designerApplication', address, isCon
                 <KycModal
                     isOpen={showKycModal}
                     walletAddress={address}
+                    isOnChainVerified={isOnChainKyc === true}
+                    continueLabel="Done"
                     onClose={() => setShowKycModal(false)}
                     onApproved={async () => {
                         await refetchKyc()
                         await refetchOnChainKyc()
                         setShowKycModal(false)
+                    }}
+                    onRefresh={async () => {
+                        await refetchKyc()
+                        await refetchOnChainKyc()
                     }}
                 />
             )}

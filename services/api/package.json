@@ -11,7 +11,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:migrate:reset": "prisma migrate reset --force",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "end-campaigns:except": "node scripts/end-campaigns-except.mjs",
+    "vet-campaign": "node scripts/vet-campaign.mjs"
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.81.0",

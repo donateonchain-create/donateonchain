@@ -7,7 +7,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { getStorageJson } from '../utils/safeStorage'
+import { getStorageJson, setStorageJson, userProfileLocalKey } from '../utils/safeStorage'
 import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage, isNgoApplicationApproved, isDesignerApplicationApproved } from '../utils/storageApi'
 import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
 import { useDesignerApplicationQuery } from '../hooks/useDesignerApplicationQuery'
@@ -87,14 +87,16 @@ const UserProfile = () => {
                     // Fallback to local
                 }
             }
-            const profile = getStorageJson<any>('userProfile', null);
-            if (profile) {
-                return {
-                    name: profile.name || 'User',
-                    bio: profile.bio || '',
-                    bannerImage: profile.bannerImage ?? null,
-                    profileImage: profile.profileImage ?? null
-                };
+            if (address) {
+                const profile = getStorageJson<any>(userProfileLocalKey(address), null);
+                if (profile) {
+                    return {
+                        name: profile.name || 'User',
+                        bio: profile.bio || '',
+                        bannerImage: profile.bannerImage ?? null,
+                        profileImage: profile.profileImage ?? null
+                    };
+                }
             }
             return { name: 'User', bio: '', bannerImage: null, profileImage: null };
         }
@@ -164,7 +166,9 @@ const UserProfile = () => {
 
     const saveProfileMutation = useMutation({
         mutationFn: async (updatedProfile: any) => {
-            localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+            if (address) {
+                setStorageJson(userProfileLocalKey(address), updatedProfile);
+            }
             if (address && isConnected) {
                 await saveUserProfileWithImages(address, updatedProfile);
             }

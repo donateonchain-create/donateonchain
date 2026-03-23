@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAccount } from 'wagmi'
@@ -9,21 +10,40 @@ import { isDesignerApplicationApproved, isNgoApplicationApproved } from '../util
 import { useNgoApplicationQuery } from '../hooks/useNgoApplicationQuery'
 import { useDesignerApplicationQuery } from '../hooks/useDesignerApplicationQuery'
 
+function SiweSignInLauncher({ signIn }: { signIn: () => void }) {
+    const ran = useRef(false)
+    if (!ran.current) {
+        ran.current = true
+        queueMicrotask(() => {
+            void signIn()
+        })
+    }
+    return null
+}
+
 interface PrivateRouteProps {
     children: React.ReactNode
     mode?: 'auth' | 'kyc'
     requireNgoApproved?: boolean
     requireDesignerApproved?: boolean
+    requireSiwe?: boolean
 }
 
-const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false, requireDesignerApproved = false }: PrivateRouteProps) => {
+const PrivateRoute = ({
+    children,
+    mode = 'auth',
+    requireNgoApproved = false,
+    requireDesignerApproved = false,
+    requireSiwe = true,
+}: PrivateRouteProps) => {
     const { isConnected, status } = useAccount()
-    const { isAuthenticated, isSigningIn, signIn } = useAuth()
+    const { isAuthenticated, isSigningIn, signIn, error: authError } = useAuth()
     const location = useLocation()
     const navigate = useNavigate()
     const { address } = useAccount()
     const { data: ngoApplicationState, isLoading: isNgoApplicationLoading } = useNgoApplicationQuery({
         enabled: requireNgoApproved,
+        useWalletSignature: requireNgoApproved,
     })
     const { data: designerApplicationState, isLoading: isDesignerApplicationLoading } = useDesignerApplicationQuery({
         enabled: requireDesignerApproved,
@@ -115,8 +135,14 @@ const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false, req
                     <KycModal
                         isOpen
                         walletAddress={address}
+                        isOnChainVerified={isOnChainKyc === true}
+                        continueLabel="Continue"
                         onClose={() => navigate('/')}
                         onApproved={async () => {
+                            await refetchKyc()
+                            await refetchOnChainKyc()
+                        }}
+                        onRefresh={async () => {
                             await refetchKyc()
                             await refetchOnChainKyc()
                         }}
@@ -128,28 +154,32 @@ const PrivateRoute = ({ children, mode = 'auth', requireNgoApproved = false, req
         return <>{children}</>
     }
 
-    // Wallet is connected but user hasn't signed-in via SIWE yet
-    if (!isAuthenticated && !isSigningIn) {
-        // Trigger sign-in automatically
-        signIn()
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-                <p style={{ color: '#666', fontSize: '1rem' }}>
-                    Please sign the message in your wallet to continue…
-                </p>
-            </div>
-        )
-    }
+    if (requireSiwe) {
+        if (!isAuthenticated && !isSigningIn) {
+            return (
+                <>
+                    <SiweSignInLauncher
+                        key={`${address ?? ''}:${authError ?? ''}`}
+                        signIn={signIn}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                        <p style={{ color: '#666', fontSize: '1rem' }}>
+                            Please sign the message in your wallet to continue…
+                        </p>
+                    </div>
+                </>
+            )
+        }
 
-    // Show loading while sign-in is in progress
-    if (isSigningIn) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-                <p style={{ color: '#666', fontSize: '1rem' }}>
-                    Verifying your wallet…
-                </p>
-            </div>
-        )
+        if (isSigningIn) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <p style={{ color: '#666', fontSize: '1rem' }}>
+                        Verifying your wallet…
+                    </p>
+                </div>
+            )
+        }
     }
 
     return <>{children}</>

@@ -30,7 +30,9 @@ const BecomeanNgo = () => {
         setTimeout(() => setToast(null), 4000)
     }
 
-    const { data: ngoApplicationData, isLoading: isLoadingApplication } = useNgoApplicationQuery()
+    const { data: ngoApplicationData, isLoading: isLoadingApplication } = useNgoApplicationQuery({
+        useWalletSignature: true,
+    })
 
     const hasAlreadyApplied = ngoApplicationData?.hasApplied ?? false
     const existingNgoData: any = ngoApplicationData?.data ?? null

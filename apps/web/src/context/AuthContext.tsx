@@ -71,17 +71,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return address.toLowerCase() === walletAddress
   }, [token, walletAddress, isConnected, address])
 
-  // If wallet disconnected or switched, clear stored auth (no effect — just derived + lazy clear)
+  const signInInFlightRef = useRef(false)
   const prevAddressRef = useRef(address)
   if (address !== prevAddressRef.current) {
     prevAddressRef.current = address
     // Wallet changed — if we had auth for a different wallet, purge it
     if (walletAddress && address?.toLowerCase() !== walletAddress) {
+      signInInFlightRef.current = false
       clearAuth()
       setToken(null)
       setWalletAddress(null)
       setRoles([])
       setError(null)
+      setIsSigningIn(false)
     }
   }
 
@@ -98,6 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError('Wallet not connected')
       return
     }
+    if (signInInFlightRef.current) return
+    signInInFlightRef.current = true
 
     setIsSigningIn(true)
     setError(null)
@@ -131,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('SIWE sign-in error:', e)
       }
     } finally {
+      signInInFlightRef.current = false
       setIsSigningIn(false)
     }
   }, [address, isConnected, signMessageAsync])

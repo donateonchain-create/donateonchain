@@ -206,14 +206,7 @@ contract DonateOnChainTest is Test {
 
         vm.prank(donor);
         vm.expectRevert();
-        donateOnChain.updateCampaign(
-            campaignId,
-            "Hack",
-            "Hack",
-            "QmHack",
-            bytes32(uint256(3)),
-            1 ether
-        );
+        donateOnChain.updateCampaign(campaignId, "Hack", "Hack", "QmHack", bytes32(uint256(3)), 1 ether);
     }
 
     // ============ Campaign Vetting Tests ============
@@ -249,20 +242,16 @@ contract DonateOnChainTest is Test {
     // ============ Donation Tests ============
 
     function test_Contribute() public {
-        uint256 campaignId = _createActiveCampaign();
+        uint256 campaignId = _createActiveCampaignWithTarget(100 ether);
 
-        // Verify donor
         vm.prank(complianceOfficer);
         donateOnChain.verifyAccount(donor);
 
-        // Donate
         vm.prank(donor);
-        uint256 nftId = donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
+        uint256 nftId = donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
         assertEq(nftId, 0);
-
-        // Check campaign balance (currentAmount removed)
-        assertEq(donateOnChain.getCampaignBalance(campaignId), 5 ether);
+        assertEq(donateOnChain.getCampaignBalance(campaignId), 10 ether);
     }
 
     function test_ContributeReachesGoal() public {
@@ -293,10 +282,9 @@ contract DonateOnChainTest is Test {
         vm.prank(complianceOfficer);
         donateOnChain.verifyAccount(donor);
 
-        // Campaign is still in Pending_Vetting state
         vm.prank(donor);
         vm.expectRevert();
-        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
     }
 
     // ============ Pull-Over-Push Tests ============
@@ -331,15 +319,14 @@ contract DonateOnChainTest is Test {
     }
 
     function test_RevertWhen_ClaimFundsBeforeGoalReached() public {
-        uint256 campaignId = _createActiveCampaign();
+        uint256 campaignId = _createActiveCampaignWithTarget(100 ether);
 
         vm.prank(complianceOfficer);
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
-        // Try to claim with only 50% of goal
         vm.prank(ngo);
         vm.expectRevert();
         donateOnChain.claimFunds(campaignId);
@@ -362,34 +349,30 @@ contract DonateOnChainTest is Test {
     }
 
     function test_ClaimRefund() public {
-        uint256 campaignId = _createActiveCampaign();
+        uint256 campaignId = _createActiveCampaignWithTarget(100 ether);
 
         vm.prank(complianceOfficer);
         donateOnChain.verifyAccount(donor);
 
         vm.prank(donor);
-        donateOnChain.contribute{value: 5 ether}(campaignId, "QmDonationMetadata");
+        donateOnChain.contribute{value: 10 ether}(campaignId, "QmDonationMetadata");
 
-        // Fast forward past deadline
         DonateOnChain.Campaign memory campaign = donateOnChain.getCampaign(campaignId);
         vm.warp(campaign.deadline + 1);
 
-        // Update campaign state
         donateOnChain.updateCampaignState(campaignId);
         campaign = donateOnChain.getCampaign(campaignId);
         assertEq(uint256(campaign.state), uint256(DonateOnChain.CampaignState.Failed_Refundable));
 
-        // Enable refunds (required before claiming)
         vm.prank(campaignManager);
         donateOnChain.enableRefunds(campaignId);
 
-        // Claim refund
         uint256 donorBalanceBefore = donor.balance;
 
         vm.prank(donor);
-        donateOnChain.claimRefund(0); // donationId = 0
+        donateOnChain.claimRefund(0);
 
-        assertEq(donor.balance, donorBalanceBefore + 5 ether);
+        assertEq(donor.balance, donorBalanceBefore + 10 ether);
     }
 
     // ============ Multisig Treasury Tests ============
@@ -538,6 +521,30 @@ contract DonateOnChainTest is Test {
 
     function _createActiveCampaign() internal returns (uint256) {
         uint256 campaignId = _createVerifiedCampaign();
+
+        vm.prank(campaignManager);
+        donateOnChain.vetCampaign(campaignId, true);
+
+        return campaignId;
+    }
+
+    function _createActiveCampaignWithTarget(uint256 targetAmount) internal returns (uint256) {
+        vm.prank(complianceOfficer);
+        donateOnChain.verifyAccount(ngo);
+
+        vm.prank(ngo);
+        uint256 campaignId = donateOnChain.createCampaign(
+            designer,
+            "Save the Whales",
+            "Help protect marine life",
+            "QmHash123",
+            bytes32(uint256(1)),
+            targetAmount,
+            block.timestamp + 30 days,
+            7000,
+            2000,
+            1000
+        );
 
         vm.prank(campaignManager);
         donateOnChain.vetCampaign(campaignId, true);

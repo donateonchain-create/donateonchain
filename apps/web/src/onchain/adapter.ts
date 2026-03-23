@@ -11,7 +11,33 @@ export { MIN_DONATION_HBAR, MIN_DONATION_WEI }
 const CONTRACT = addresses.DONATE_ON_CHAIN as HexAddress
 const ABI = abis.DonateOnChain as any
 
-const CampaignState = { Pending_Vetting: 0, Active: 1, Goal_Reached: 2, Failed_Refundable: 3, Closed: 4 } as const
+export const CampaignState = { Pending_Vetting: 0, Active: 1, Goal_Reached: 2, Failed_Refundable: 3, Closed: 4 } as const
+
+/** If non-empty, only these on-chain campaign IDs appear in browse, search, profile lists, and detail URLs. */
+export const VISIBLE_CAMPAIGN_IDS: readonly number[] = [1, 3]
+
+export function isCampaignIdInPublicAllowlist(id: number | bigint): boolean {
+  if (VISIBLE_CAMPAIGN_IDS.length === 0) return true
+  return VISIBLE_CAMPAIGN_IDS.includes(Number(id))
+}
+
+function includeCampaignInBrowseList(st: number, id: number): boolean {
+  if (VISIBLE_CAMPAIGN_IDS.length > 0 && VISIBLE_CAMPAIGN_IDS.includes(id)) {
+    return st !== CampaignState.Closed
+  }
+  return st === CampaignState.Pending_Vetting || st === CampaignState.Active
+}
+
+function normalizeChainCampaignState(raw: unknown): number {
+  if (raw == null) return 0
+  if (typeof raw === 'bigint') return Number(raw)
+  if (typeof raw === 'number') return raw
+  if (typeof raw === 'string' && raw !== '') {
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
 
 const CAMPAIGN_STATUS_WORDS = [
   'pending admin approval',
@@ -101,7 +127,6 @@ async function assertDonationAllowed(params: { campaignId: bigint; valueWei: big
 }
 
 function toWei(hbar: number) {
-  // Hedera EVM uses weibars (18 decimals) matching Ethereum — relay converts to tinybars internally
   return BigInt(Math.round(hbar * 1e18))
 }
 
@@ -168,10 +193,21 @@ export async function getCampaignMetadataCid(_campaignId: bigint): Promise<strin
   return null
 }
 
-export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number; title: string; description: string; category?: string; image?: string; onchainId?: bigint }>> {
+export async function listActiveCampaignsWithMeta(): Promise<
+  Array<{ id: number; title: string; description: string; category?: string; image?: string; coverImageFile?: string; onchainId?: bigint }>
+> {
   const ids = await listActiveCampaignIds()
-  const results: Array<{ id: number; title: string; description: string; category?: string; image?: string; onchainId?: bigint }> = []
+  const results: Array<{
+    id: number
+    title: string
+    description: string
+    category?: string
+    image?: string
+    coverImageFile?: string
+    onchainId?: bigint
+  }> = []
   for (const id of ids) {
+    if (!isCampaignIdInPublicAllowlist(id)) continue
     try {
       const c = await getCampaign(id)
       const image = c.image ? (c.image.startsWith('ipfs://') ? getIPFSURL(c.image.replace('ipfs://', '')) : c.image) : undefined
@@ -183,20 +219,27 @@ export async function listActiveCampaignsWithMeta(): Promise<Array<{ id: number;
   return results
 }
 
-export async function listAllCampaignsFromChain(): Promise<any[]> {
+export async function listAllCampaignsFromChain(
+  opts?: { bypassVisibilityAllowlist?: boolean }
+): Promise<any[]> {
   try {
     const countBn = await read<bigint>({ address: CONTRACT, abi: ABI, functionName: 'campaignCount', args: [] }).catch(() => 0n)
     const total = Number(countBn)
     if (!Number.isFinite(total) || total <= 0) return []
 
     const campaigns: any[] = []
+    const bypass = opts?.bypassVisibilityAllowlist === true
 
     for (let i = 0; i < total; i++) {
       const id = BigInt(i)
+      const idNum = Number(id)
+      if (!bypass && !isCampaignIdInPublicAllowlist(idNum)) continue
       try {
         const chainCampaign = await getCampaign(id)
         const st = chainCampaign.state ?? CampaignState.Pending_Vetting
-        if (st !== CampaignState.Pending_Vetting && st !== CampaignState.Active) {
+        if (bypass) {
+          if (st !== CampaignState.Pending_Vetting && st !== CampaignState.Active) continue
+        } else if (!includeCampaignInBrowseList(st, idNum)) {
           continue
         }
 
@@ -264,8 +307,13 @@ export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
 
     const campaigns: any[] = []
     for (const id of ids) {
+      const idNum = Number(id)
+      if (!isCampaignIdInPublicAllowlist(idNum)) continue
       try {
         const chainCampaign = await getCampaign(id)
+        const st = chainCampaign.state ?? CampaignState.Pending_Vetting
+        if (!includeCampaignInBrowseList(st, idNum)) continue
+
         let amountRaised = 0
         try {
           amountRaised = await getCampaignRaisedHBAR(id)
@@ -282,8 +330,8 @@ export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
         }
 
         campaigns.push({
-          id: Number(id),
-          onchainId: Number(id),
+          id: idNum,
+          onchainId: idNum,
           title,
           description,
           category,
@@ -445,7 +493,7 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
 
 export async function getCampaign(id: bigint): Promise<Campaign & { active?: boolean; state?: number }> {
   const c = await read<any>({ address: CONTRACT, abi: ABI, functionName: 'getCampaign', args: [id] })
-  const state = typeof c?.state === 'number' ? c.state : c?.[11] ?? 0
+  const state = normalizeChainCampaignState(c?.state ?? c?.[11])
   const active = state === CampaignState.Active
   let image = c?.imageHash ?? c?.[4]
   if (image && (String(image).startsWith('Qm') || String(image).startsWith('baf'))) {

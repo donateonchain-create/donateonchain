@@ -22,6 +22,8 @@ import {
     listAllCampaignsFromChain,
     isKycVerifiedOnChain,
     MIN_DONATION_HBAR,
+    CampaignState,
+    isCampaignIdInPublicAllowlist,
 } from '../onchain/adapter'
 import { getIPFSURL, uploadFileToIPFS } from '../utils/ipfs'
 import { createDonation, mintDonationNFT, getKycVerifications } from '../api'
@@ -32,6 +34,7 @@ import {
     formatHbarDisplay,
     getRemainingToTargetHBAR,
     normalizeCampaignAmounts,
+    normalizeLikelyWeiNumber,
     weiToHbar,
 } from '../utils/hbar'
 
@@ -118,6 +121,21 @@ const CampaignDetails = () => {
             const cacheKey = `campaign_detail_v3_${id}`
             const numericId = BigInt(id || '0')
 
+            if (!isCampaignIdInPublicAllowlist(numericId)) {
+                try {
+                    localStorage.removeItem(cacheKey)
+                } catch {}
+                return null
+            }
+
+            const gate = await onchainGetCampaign(numericId).catch(() => null)
+            if (gate != null && gate.state === CampaignState.Closed) {
+                try {
+                    localStorage.removeItem(cacheKey)
+                } catch {}
+                return null
+            }
+
             let amountRaised = 0
             try {
                 amountRaised = await getCampaignRaisedHBAR(numericId)
@@ -142,7 +160,7 @@ const CampaignDetails = () => {
             }
 
             try {
-                const chainCampaign = await onchainGetCampaign(numericId)
+                const chainCampaign = gate ?? (await onchainGetCampaign(numericId))
                 let metaImage: string | undefined = undefined
                 let metaGoal: number | string | undefined = undefined
                 let metaTitle = ''
@@ -180,16 +198,20 @@ const CampaignDetails = () => {
                         : undefined
                 const targetFromMeta =
                     metaGoalNum !== undefined && !Number.isNaN(metaGoalNum) ? metaGoalNum : undefined
+                const targetFromChain =
+                    chainCampaign && chainCampaign.goalHBAR !== undefined && chainCampaign.goalHBAR > 0n
+                        ? weiToHbar(chainCampaign.goalHBAR)
+                        : 0
                 const campaignObj: any = {
                     id: Number(numericId),
                     onchainId: Number(numericId),
                     title: metaTitle || chainCampaign?.title,
                     description: metaDesc || chainCampaign?.description,
                     target:
-                        targetFromMeta !== undefined
-                            ? targetFromMeta
-                            : chainCampaign
-                              ? weiToHbar(chainCampaign.goalHBAR)
+                        targetFromChain > 0
+                            ? targetFromChain
+                            : targetFromMeta !== undefined
+                              ? targetFromMeta
                               : 0,
                     ngoWallet: chainCampaign?.ngo,
                     image: metaImage || chainCampaign?.image,
@@ -232,9 +254,9 @@ const CampaignDetails = () => {
                 const currentId = Number(id || '0')
                 const filtered = list.filter((c: any) => Number(c.onchainId || c.id) !== currentId)
                 const mapped = filtered.map((c: any) => {
-                    const goal = Number(c.goal) || 0
-                    const raised = Number(c.amountRaised) || 0
-                    const percentage = goal > 0 ? (raised / goal) * 100 : 0
+                    const goal = normalizeLikelyWeiNumber(Number(c.target ?? c.goal ?? 0))
+                    const raised = normalizeLikelyWeiNumber(Number(c.amountRaised ?? 0))
+                    const percentage = computeCampaignPercent(raised, goal)
                     return { ...c, goal, amountRaised: raised, percentage }
                 })
                 setCache(cacheKey, mapped)
@@ -551,9 +573,9 @@ const CampaignDetails = () => {
 
                     <div className="mb-12">
                         {(() => {
-                            const target = Number(campaign.target || 0);
-                            const amountRaised = Number(campaign.amountRaised || 0);
-                            const percentage = campaign.percentage || (target > 0 ? (amountRaised / target) * 100 : 0);
+                            const target = normalizeLikelyWeiNumber(Number(campaign.target ?? 0))
+                            const amountRaised = normalizeLikelyWeiNumber(Number(campaign.amountRaised ?? 0))
+                            const percentage = computeCampaignPercent(amountRaised, target)
                             return (
                                 <>
                                     <div className="relative h-16 rounded-full overflow-hidden bg-white border-2 border-gray-300">

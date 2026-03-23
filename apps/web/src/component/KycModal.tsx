@@ -9,6 +9,12 @@ interface KycModalProps {
   walletAddress?: string
   onClose: () => void
   onApproved: () => void
+  /** When false, in-app status is approved but Hedera on-chain flag is not set yet (parent refetches this). */
+  isOnChainVerified?: boolean
+  /** Shown when in-app + on-chain are both satisfied (or when isOnChainVerified is unset). */
+  continueLabel?: string
+  /** Called when user taps “Refresh status” while awaiting on-chain verification. */
+  onRefresh?: () => void | Promise<void>
 }
 
 interface KycFormValues {
@@ -45,7 +51,15 @@ const statusText: Record<KycStatusApi, string> = {
 
 type StatusLoadState = 'loading' | 'ready' | 'failed'
 
-const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps) => {
+const KycModal = ({
+  isOpen,
+  walletAddress,
+  onClose,
+  onApproved,
+  isOnChainVerified,
+  continueLabel,
+  onRefresh,
+}: KycModalProps) => {
   const [status, setStatus] = useState<KycStatusApi | null>(null)
   const [statusLoadState, setStatusLoadState] = useState<StatusLoadState>('loading')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -67,10 +81,20 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
 
   const canStartVerification = useMemo(
     () =>
-      statusLoadState === 'ready' &&
+      (statusLoadState === 'ready' || statusLoadState === 'failed') &&
       (status === null || status === 'rejected' || status === 'expired'),
     [status, statusLoadState]
   )
+
+  const showAwaitingOnChain =
+    statusLoadState === 'ready' &&
+    status === 'approved' &&
+    isOnChainVerified === false
+
+  const handleRefreshStatus = async () => {
+    await loadStatus()
+    await onRefresh?.()
+  }
 
   const loadStatus = async () => {
     if (!walletAddress) {
@@ -199,8 +223,21 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
                 <p className="text-sm font-semibold">KYC verification</p>
               </div>
               <p className="text-sm text-gray-200">
-                Complete KYC once to continue with donations from this wallet.
+                Complete KYC once per wallet. The same flow applies for donations, designer signup, and other gated actions.
               </p>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-left text-sm text-gray-700">
+              <p className="mb-2 font-medium text-gray-900">How verification works</p>
+              <ol className="list-decimal space-y-1.5 pl-5">
+                <li>Enter your details and upload a valid government-issued ID (PDF or image).</li>
+                <li>Our team reviews your submission (often within a few business days).</li>
+                <li>After approval, your wallet is marked verified on Hedera (on-chain).</li>
+                <li>
+                  Use <span className="font-medium text-gray-900">Refresh status</span> on the page behind this window until both
+                  in-app and on-chain show verified.
+                </li>
+              </ol>
             </div>
 
             {statusLoadState === 'loading' && (
@@ -212,13 +249,35 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
 
             {statusLoadState === 'ready' && status && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                {statusText[status]}
+                <p className="font-medium text-gray-900">Current status</p>
+                <p className="mt-1">{statusText[status]}</p>
+                {(status === 'pending' || status === 'in_review') && (
+                  <p className="mt-3 border-t border-gray-200 pt-3 text-gray-600">
+                    The form below stays hidden while a submission is in the queue so we don’t create duplicate requests. If you
+                    need help, close this window and contact support with your wallet address.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {showAwaitingOnChain && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-950">
+                <p className="font-semibold">Waiting for on-chain verification</p>
+                <p className="mt-1">
+                  Your identity is approved in our system. Your wallet still needs to be marked verified on Hedera by our team. Close
+                  this window and use <strong>Refresh status</strong> on the previous page until on-chain shows verified.
+                </p>
               </div>
             )}
 
             {statusLoadState === 'failed' && fetchError && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
                 {fetchError}
+                <p className="mt-2 text-red-800/90">
+                  We could not confirm whether you already have a submission. You can use <strong>Try again</strong> to reload
+                  status, or fill in the form below and <strong>Start verification</strong> if this is your first time—submit may
+                  still work even when the status check fails.
+                </p>
               </div>
             )}
 
@@ -432,26 +491,25 @@ const KycModal = ({ isOpen, walletAddress, onClose, onApproved }: KycModalProps)
                 variant="primary-bw"
                 size="md"
                 onClick={startVerification}
-                disabled={isSubmitting || statusLoadState !== 'ready' || !walletAddress}
+                disabled={isSubmitting || !walletAddress}
                 className="flex-1"
               >
                 {isSubmitting ? 'Starting verification...' : 'Start verification'}
               </Button>
             )}
             {statusLoadState === 'ready' && (status === 'pending' || status === 'in_review') && (
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={loadStatus}
-                disabled={statusLoadState === 'loading'}
-                className="flex-1"
-              >
+              <Button variant="secondary" size="md" onClick={loadStatus} className="flex-1">
                 Check status
               </Button>
             )}
-            {statusLoadState === 'ready' && status === 'approved' && (
+            {statusLoadState === 'ready' && status === 'approved' && showAwaitingOnChain && (
+              <Button variant="primary-bw" size="md" onClick={() => void handleRefreshStatus()} className="flex-1">
+                Refresh status
+              </Button>
+            )}
+            {statusLoadState === 'ready' && status === 'approved' && !showAwaitingOnChain && (
               <Button variant="primary-bw" size="md" onClick={onApproved} className="flex-1">
-                Continue donation
+                {continueLabel ?? 'Continue'}
               </Button>
             )}
           </div>

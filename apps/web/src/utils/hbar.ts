@@ -1,5 +1,6 @@
 import { formatUnits } from 'viem'
 
+/** Native HBAR on Hedera EVM is 18-decimal weibar (viem `formatEther` / `parseEther`). */
 export function weiToHbar(wei: bigint | string | number): number {
   if (typeof wei === 'bigint') {
     return Number(formatUnits(wei, 18))

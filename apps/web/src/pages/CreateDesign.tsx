@@ -16,6 +16,8 @@ import { createDesign, listActiveCampaignsWithMeta } from '../onchain/adapter'
 
 const CreateDesign = () => {
     const { address } = useAccount()
+    const navigate = useNavigate()
+    const location = useLocation()
     const [selectedType, setSelectedType] = useState(() => location.state?.editDesign?.type || 'Shirt')
     const [selectedSizes, setSelectedSizes] = useState<string[]>(() => location.state?.editDesign?.sizes || [])
     const [quantity, setQuantity] = useState(() => location.state?.editDesign?.quantity?.toString() || '1')
@@ -37,8 +39,8 @@ const CreateDesign = () => {
     const [countdown, setCountdown] = useState(15)
     const [showErrorModal, setShowErrorModal] = useState(false)
     const [createError, setCreateError] = useState<string | null>(null)
-    const [isEditMode, setIsEditMode] = useState(() => !!location.state?.editDesign)
-    const [editDesignId, setEditDesignId] = useState<number | null>(() => location.state?.editDesign?.id || null)
+    const [isEditMode] = useState(() => !!location.state?.editDesign)
+    const [editDesignId] = useState<number | null>(() => location.state?.editDesign?.id || null)
     const [existingFrontImage, setExistingFrontImage] = useState<string | null>(() => location.state?.editDesign?.frontDesign?.url || location.state?.editDesign?.frontDesign?.dataUrl || null)
     const [existingBackImage, setExistingBackImage] = useState<string | null>(() => location.state?.editDesign?.backDesign?.url || location.state?.editDesign?.backDesign?.dataUrl || null)
 
@@ -55,8 +57,6 @@ const CreateDesign = () => {
     const [campaignSearch, setCampaignSearch] = useState('')
     const [campaignCategoryFilter, setCampaignCategoryFilter] = useState<string>('all')
     const [isCategoryOpen, setIsCategoryOpen] = useState(false)
-    const navigate = useNavigate()
-    const location = useLocation()
     const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
 
@@ -302,9 +302,10 @@ const CreateDesign = () => {
                                     </div>
                                 )}
                                 {!isLoadingCampaigns && campaigns.filter(c => (campaignCategoryFilter === 'all' || (c.category || '').toLowerCase() === campaignCategoryFilter.toLowerCase())).filter(c => c.title.toLowerCase().includes(campaignSearch.toLowerCase()) || c.description.toLowerCase().includes(campaignSearch.toLowerCase())).map(c => {
-                                    const campaignId = c.onchainId || c.id
+                                    const campaignId = c.onchainId ?? BigInt(c.id)
+                                    const idForState = typeof campaignId === 'bigint' ? Number(campaignId) : campaignId
                                     return (
-                                    <button key={campaignId} className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${selectedCampaignId === campaignId ? 'bg-gray-100' : ''}`} onClick={() => setSelectedCampaignId(campaignId)}>
+                                    <button key={String(campaignId)} className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${selectedCampaignId === idForState ? 'bg-gray-100' : ''}`} onClick={() => setSelectedCampaignId(idForState)}>
                                         <div className="flex items-start gap-3">
                                             <div className="w-12 h-12 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
                                                 { (c.image || c.coverImageFile) && (

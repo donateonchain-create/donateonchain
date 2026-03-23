@@ -382,10 +382,10 @@ contract DonateOnChain is
         uint256 targetAmount
     ) external {
         Campaign storage campaign = campaigns[campaignId];
-        
+
         if (campaign.ngo == address(0)) revert CampaignNotFound(campaignId);
         if (msg.sender != campaign.ngo) revert NotKycVerified(msg.sender);
-        
+
         // Only allow updates while pending vetting or active
         if (campaign.state != CampaignState.Active && campaign.state != CampaignState.Pending_Vetting) {
             revert InvalidCampaignState(campaignId, campaign.state, CampaignState.Active);

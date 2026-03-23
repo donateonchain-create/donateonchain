@@ -651,7 +651,7 @@ export const updateNgoApplicationStatus = async (
   walletAddress: string,
   status: 'approved' | 'rejected',
   reason: string,
-  approvalTransactionHash?: string
+  _approvalTransactionHash?: string
 ) => {
   try {
     const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/admin/ngo-applications/${walletAddress}`, {
@@ -678,6 +678,22 @@ export const saveDesignerApplication = async (designerData: any) => {
     }
     return false
   }
+}
+
+export function isDesignerApplicationRecord(data: any | null | undefined): boolean {
+  if (!data || typeof data !== 'object') return false
+  if (data.applicationKind === 'designer') return true
+  if (data.applicationKind === 'ngo') return false
+  const looksLikeNgoOnly =
+    Boolean(data.ngoName) && !data.primaryDesignField && !data.portfolioLink && !data.sampleWorkHashes
+  if (looksLikeNgoOnly) return false
+  return Boolean(
+    data.primaryDesignField ||
+      data.portfolioLink ||
+      data.role === 'designer' ||
+      (Array.isArray(data.sampleWorkHashes) && data.sampleWorkHashes.length > 0) ||
+      (data.fullName && !data.ngoName)
+  )
 }
 
 export const getDesignerApplicationByWallet = async (walletAddress: string) => {
@@ -722,22 +738,40 @@ export async function fetchDesignerApplicationState(
   if (!walletAddress) return { hasApplied: false, data: null }
   try {
     const existing = await getDesignerApplicationByWallet(walletAddress)
-    if (existing) return { hasApplied: true, data: existing }
+    if (existing && isDesignerApplicationRecord(existing)) {
+      return { hasApplied: true, data: existing }
+    }
   } catch {
     //
   }
   const designers = getStorageJson<any[]>('designers', [])
   const userDesigner = designers.find(
     (designer: any) =>
-      designer.connectedWalletAddress?.toLowerCase() === walletAddress.toLowerCase() ||
-      designer.walletAddress?.toLowerCase() === walletAddress.toLowerCase()
+      (designer.connectedWalletAddress?.toLowerCase() === walletAddress.toLowerCase() ||
+        designer.walletAddress?.toLowerCase() === walletAddress.toLowerCase()) &&
+      isDesignerApplicationRecord(designer)
   )
   if (userDesigner) return { hasApplied: true, data: userDesigner }
   return { hasApplied: false, data: null }
 }
 
+export function getDesignerApplicationStateSync(
+  walletAddress: string
+): { hasApplied: boolean; data: any | null } | null {
+  if (!walletAddress) return null
+  const designers = getStorageJson<any[]>('designers', [])
+  const userDesigner = designers.find(
+    (designer: any) =>
+      (designer.connectedWalletAddress?.toLowerCase() === walletAddress.toLowerCase() ||
+        designer.walletAddress?.toLowerCase() === walletAddress.toLowerCase()) &&
+      isDesignerApplicationRecord(designer)
+  )
+  if (userDesigner) return { hasApplied: true, data: userDesigner }
+  return null
+}
+
 export function isDesignerApplicationApproved(data: any | null | undefined): boolean {
-  if (!data) return false
+  if (!isDesignerApplicationRecord(data)) return false
   return data.status === 'approved'
 }
 

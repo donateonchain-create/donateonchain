@@ -2,6 +2,7 @@ import { X, Camera } from 'lucide-react'
 import { useState } from 'react'
 import Button from './Button'
 import { useAccount } from 'wagmi'
+import { profileSetupDoneKey, setStorageJson, userProfileLocalKey } from '../utils/safeStorage'
 import { saveUserProfileWithImages } from '../utils/storageApi'
 
 interface ProfileSetupModalProps {
@@ -103,10 +104,9 @@ const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupMod
             profileImage
         }
         
-        localStorage.setItem('userProfile', JSON.stringify(profileData))
-        localStorage.setItem('profileSetupCompleted', 'true')
-        
         if (address) {
+            setStorageJson(userProfileLocalKey(address), profileData)
+            localStorage.setItem(profileSetupDoneKey(address), 'true')
             sessionStorage.setItem(`profileSetupShown_${address}`, 'true')
         }
         
@@ -129,8 +129,8 @@ const ProfileSetupModal = ({ isOpen, onClose, existingProfile }: ProfileSetupMod
     }
 
     const handleSkip = () => {
-        localStorage.setItem('profileSetupCompleted', 'true')
         if (address) {
+            localStorage.setItem(profileSetupDoneKey(address), 'true')
             sessionStorage.setItem(`profileSetupShown_${address}`, 'true')
         }
         onClose()

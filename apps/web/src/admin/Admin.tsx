@@ -234,7 +234,7 @@ const AdminPage = () => {
 
   const loadAdminStats = async () => {
     try {
-      const chainCampaigns = await listAllCampaignsFromChain()
+      const chainCampaigns = await listAllCampaignsFromChain({ bypassVisibilityAllowlist: true })
       setActiveCampaignsList(chainCampaigns || [])
       
       const allDesignsRaw = await getAllGlobalDesigns()
