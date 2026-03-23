@@ -27,11 +27,19 @@ const Campaign = () => {
         queryFn: async () => {
             try {
                 const [onchain, apiResult] = await Promise.all([
-                    listAllCampaignsFromChain(),
+                    listAllCampaignsFromChain({ bypassVisibilityAllowlist: true }),
                     getCampaigns({ limit: 200 }).catch(() => ({ items: [] })),
                 ])
                 const backendById = new Map(apiResult.items.map((c: any) => [c.id, c]))
-                const withPercent = onchain.map((c: any) => {
+                const hiddenIds = new Set(['4', '6'])
+                const hiddenTitles = new Set(['test', 'qwerty'])
+                const approvedOnchain = (onchain as any[]).filter((c: any) => {
+                    if (c.vettingPending) return false
+                    const id = String(c.onchainId ?? c.id ?? '').trim()
+                    const title = String(c.title ?? '').trim().toLowerCase()
+                    return !hiddenIds.has(id) && !hiddenTitles.has(title)
+                })
+                const withPercent = approvedOnchain.map((c: any) => {
                     const backend = backendById.get(String(c.onchainId ?? c.id)) as any
                     const target =
                         Number(c.target) ||

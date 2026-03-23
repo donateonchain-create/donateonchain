@@ -3,7 +3,7 @@ import { read, write, wait, publicClient } from './client'
 import type { Campaign, Design, NgoProfile, DesignerProfile, UserRoles, HexAddress } from '../types/onchain'
 import { getIPFSURL } from '../utils/ipfs'
 import { keccak256, stringToHex, decodeEventLog, formatUnits, parseEther } from 'viem'
-import { formatHbarDisplay, weiToHbar } from '../utils/hbar'
+import { formatHbarDisplay, targetAmountToHbar, weiToHbar } from '../utils/hbar'
 import { interpretDonationWriteError, MIN_DONATION_HBAR, MIN_DONATION_WEI } from './contractErrors'
 
 export { MIN_DONATION_HBAR, MIN_DONATION_WEI }
@@ -119,7 +119,7 @@ async function assertDonationAllowed(params: { campaignId: bigint; valueWei: big
   const target = campaign.goalHBAR
   const remaining = target > raised ? target - raised : 0n
   if (valueWei > remaining) {
-    const remHbar = formatHbarDisplay(Number(formatUnits(remaining, 18)))
+    const remHbar = formatHbarDisplay(weiToHbar(remaining))
     throw new Error(
       `This amount exceeds what is left to reach the campaign goal. You can donate up to ${remHbar} HBAR more.`
     )
@@ -127,7 +127,7 @@ async function assertDonationAllowed(params: { campaignId: bigint; valueWei: big
 }
 
 function toWei(hbar: number) {
-  return BigInt(Math.round(hbar * 1e18))
+  return parseEther(String(hbar))
 }
 
 export { toWei }
@@ -254,13 +254,13 @@ export async function listAllCampaignsFromChain(
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = weiToHbar(chainCampaign.goalHBAR)
+        let target = targetAmountToHbar(chainCampaign.goalHBAR)
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
           image = getIPFSURL(chainCampaign.image)
         }
 
-        campaigns.push({
+          campaigns.push({
           id: Number(id),
           onchainId: Number(id),
           title,
@@ -300,19 +300,24 @@ export async function listAllCampaignsFromChain(
   }
 }
 
-export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
+export async function listCampaignsByNGO(
+  ngoAddress: string,
+  opts?: { bypassVisibilityAllowlist?: boolean; includeAllStates?: boolean }
+): Promise<any[]> {
   try {
     const ids = await read<bigint[]>({ address: CONTRACT, abi: ABI, functionName: 'getCampaignsByNGO', args: [ngoAddress] })
     if (!ids || ids.length === 0) return [];
 
+    const bypassVisibilityAllowlist = opts?.bypassVisibilityAllowlist === true
+    const includeAllStates = opts?.includeAllStates === true
     const campaigns: any[] = []
     for (const id of ids) {
       const idNum = Number(id)
-      if (!isCampaignIdInPublicAllowlist(idNum)) continue
+      if (!bypassVisibilityAllowlist && !isCampaignIdInPublicAllowlist(idNum)) continue
       try {
         const chainCampaign = await getCampaign(id)
         const st = chainCampaign.state ?? CampaignState.Pending_Vetting
-        if (!includeCampaignInBrowseList(st, idNum)) continue
+        if (!includeAllStates && !includeCampaignInBrowseList(st, idNum)) continue
 
         let amountRaised = 0
         try {
@@ -323,11 +328,14 @@ export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
         let description = chainCampaign.description || ''
         let category: string | undefined
         let image: string | undefined = chainCampaign.image
-        let target = weiToHbar(chainCampaign.goalHBAR)
+        let target = targetAmountToHbar(chainCampaign.goalHBAR)
 
         if (chainCampaign.image?.startsWith('Qm') || chainCampaign.image?.startsWith('baf')) {
           image = getIPFSURL(chainCampaign.image)
         }
+
+        const status = st === CampaignState.Active ? 'active' : st === CampaignState.Pending_Vetting ? 'pending' : 'flagged'
+        const flagged = status === 'flagged'
 
         campaigns.push({
           id: idNum,
@@ -342,6 +350,9 @@ export async function listCampaignsByNGO(ngoAddress: string): Promise<any[]> {
           designer: chainCampaign.designer,
           image,
           active: chainCampaign.active ?? true,
+          status,
+          flagged,
+          campaignState: st,
           createdAt: Date.now(),
         })
       } catch (e) {
@@ -469,7 +480,7 @@ export async function syncCampaignsWithOnChain(storedCampaigns: any[]): Promise<
             id: Number(onchainId),
             onchainId: Number(onchainId),
             amountRaised: raisedHbar,
-            goal: weiToHbar(chainCampaign.goalHBAR),
+            goal: targetAmountToHbar(chainCampaign.goalHBAR),
             active: chainCampaign.active ?? true,
             ngoWallet: chainCampaign.ngo,
           })
@@ -676,7 +687,35 @@ export async function donate(params: { campaignId: bigint; valueHbarDecimal: str
       args: [params.campaignId, metadataHash],
       value: valueWei,
     })
-    return await wait(hash)
+    const receipt = await wait(hash)
+    const status = (receipt as any)?.status
+    const isReverted =
+      status === 0 || status === 0n || status === '0x0' || status === 'reverted' || status === 'failed'
+    if (isReverted) {
+      throw new Error('Donation transaction reverted')
+    }
+
+    const logs = Array.isArray((receipt as any)?.logs) ? (receipt as any).logs : []
+    let foundDonation = false
+    for (const log of logs) {
+      try {
+        const decoded = decodeEventLog({ abi: ABI, data: log.data, topics: log.topics }) as any
+        if (decoded?.eventName === 'DonationMade') {
+          const eventCampaignId = BigInt(decoded.args?.campaignId ?? decoded.args?.[1] ?? 0n)
+          if (eventCampaignId === params.campaignId) {
+            foundDonation = true
+            break
+          }
+        }
+      } catch {
+        continue
+      }
+    }
+
+    if (!foundDonation && logs.length > 0) {
+      throw new Error('Donation transaction did not emit expected event')
+    }
+    return receipt
   } catch (error: unknown) {
     throw interpretDonationWriteError(error, { campaignId: params.campaignId, valueWei })
   }

@@ -1,9 +1,11 @@
 import { formatUnits } from 'viem'
 
-/** Native HBAR on Hedera EVM is 18-decimal weibar (viem `formatEther` / `parseEther`). */
+/** Contract amounts are stored in 8-decimal tinybars (HBAR uses 8 decimals). */
+const HBAR_DECIMALS = 8
+
 export function weiToHbar(wei: bigint | string | number): number {
   if (typeof wei === 'bigint') {
-    return Number(formatUnits(wei, 18))
+    return Number(formatUnits(wei, HBAR_DECIMALS))
   }
   if (typeof wei === 'number') {
     return Number.isFinite(wei) ? wei : 0
@@ -12,7 +14,7 @@ export function weiToHbar(wei: bigint | string | number): number {
   if (!s) return 0
   if (/^\d+$/.test(s)) {
     try {
-      return Number(formatUnits(BigInt(s), 18))
+      return Number(formatUnits(BigInt(s), HBAR_DECIMALS))
     } catch {
       return Number(s) || 0
     }
@@ -27,7 +29,7 @@ export function normalizeLikelyWeiNumber(n: number): number {
   if (!Number.isFinite(n) || n === 0) return n
   const abs = Math.abs(n)
   if (abs >= LIKELY_WEI_THRESHOLD) {
-    return n / 1e18
+    return n / 1e8
   }
   return n
 }
@@ -102,4 +104,36 @@ export function formatCampaignPercentLabel(percent: number): string {
   if (p >= 100) return `${Math.round(Math.min(p, 99999))}%`
   const rounded = Math.round(p * 10) / 10
   return `${rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1)}%`
+}
+
+const MAX_REASONABLE_TARGET_HBAR = 1_000_000_000
+
+/**
+ * Campaign targets have historically been written with inconsistent decimals:
+ * - on-chain donation totals use 8-decimal tinybars
+ * - older campaign targets were stored with 18-decimal scaling
+ *
+ * This converts using 8 decimals by default, but if the result is wildly too large,
+ * it falls back to 18-decimal conversion.
+ */
+export function targetAmountToHbar(raw: bigint | string | number): number {
+  const hbar8 = weiToHbar(raw)
+
+  let bn: bigint | null = null
+  if (typeof raw === 'bigint') {
+    bn = raw
+  } else if (typeof raw === 'number') {
+    bn = Number.isFinite(raw) && raw > 0 ? BigInt(Math.trunc(raw)) : null
+  } else {
+    const s = String(raw).trim()
+    if (/^\d+$/.test(s)) bn = BigInt(s)
+  }
+
+  if (bn == null) return hbar8
+
+  const hbar18 = Number(formatUnits(bn, 18))
+  const useFallback =
+    hbar8 > MAX_REASONABLE_TARGET_HBAR && Number.isFinite(hbar18) && hbar18 > 0 && hbar18 <= MAX_REASONABLE_TARGET_HBAR
+
+  return useFallback ? hbar18 : hbar8
 }

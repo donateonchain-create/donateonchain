@@ -85,13 +85,21 @@ const Home = () => {
     const { data: popularCampaigns = [], isLoading: isLoadingCampaigns } = useQuery({
         queryKey: ['globalCampaigns'],
         queryFn: async () => {
-            const cacheKey = 'home_popular_campaigns_v2';
+            const cacheKey = 'home_popular_campaigns_v5_hide_4_6';
             const cached = getCache(cacheKey);
             if (cached) return cached;
 
             try {
-                const onchainCampaigns = await listAllCampaignsFromChain();
-                const sortedCampaigns = onchainCampaigns
+                const onchainCampaigns = await listAllCampaignsFromChain({ bypassVisibilityAllowlist: true });
+                const hiddenIds = new Set(['4', '6']);
+                const hiddenTitles = new Set(['test', 'qwerty']);
+                const approvedCampaigns = (onchainCampaigns as any[]).filter((c) => {
+                    if (c.vettingPending) return false;
+                    const id = String(c.onchainId ?? c.id ?? '').trim();
+                    const title = String(c.title ?? '').trim().toLowerCase();
+                    return !hiddenIds.has(id) && !hiddenTitles.has(title);
+                });
+                const sortedCampaigns = approvedCampaigns
                     .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 const topCampaigns = sortedCampaigns.slice(0, 5);
                 setCache(cacheKey, topCampaigns);

@@ -3,10 +3,10 @@ import Header from '../component/Header'
 import Footer from '../component/Footer'
 
 const HowItWorks = () => {
-    const [activeTab, setActiveTab] = useState<'customers' | 'ngos'>('customers')
+    const [activeTab, setActiveTab] = useState<'donors' | 'ngos'>('donors')
 
 
-    const customerSteps = [
+    const donorSteps = [
         {
             number: '01',
             title: 'Search for Product/Campaign',
@@ -52,7 +52,7 @@ const HowItWorks = () => {
         }
     ]
 
-    const steps = activeTab === 'customers' ? customerSteps : ngoSteps
+    const steps = activeTab === 'donors' ? donorSteps : ngoSteps
 
     return (
         <div>
@@ -68,14 +68,14 @@ const HowItWorks = () => {
 
                     <div className="flex justify-center gap-4 mb-16">
                         <button
-                            onClick={() => setActiveTab('customers')}
+                            onClick={() => setActiveTab('donors')}
                             className={`px-8 py-3 rounded-lg font-semibold text-lg transition-colors ${
-                                activeTab === 'customers'
+                                activeTab === 'donors'
                                     ? 'bg-yellow-400 text-black'
                                     : 'bg-black text-white'
                             }`}
                         >
-                            Customers
+                            Donors
                         </button>
                         <button
                             onClick={() => setActiveTab('ngos')}

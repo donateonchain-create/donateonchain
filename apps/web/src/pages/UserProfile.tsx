@@ -5,7 +5,7 @@ import { SkeletonProfile, SkeletonCard } from "../component/Skeleton";
 import { Plus, X, Camera, Copy, Check, Loader2, XCircle } from "lucide-react";
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { getStorageJson, setStorageJson, userProfileLocalKey } from '../utils/safeStorage'
 import { getUserDesigns, saveUserProfileWithImages, getUserProfile, migrateDesignImagesToStorage, isNgoApplicationApproved, isDesignerApplicationApproved } from '../utils/storageApi'
@@ -38,6 +38,7 @@ interface Design {
 
 const UserProfile = () => {
     const navigate = useNavigate();
+    const currentLocation = useLocation();
     const { address, isConnected } = useAccount();
         const queryClient = useQueryClient();
     const [activeCategory, setActiveCategory] = useState<'NFTs' | 'History' | 'Created' | 'Campaigns'>('NFTs');
@@ -142,7 +143,7 @@ const UserProfile = () => {
         queryFn: async () => {
             if (!address || !isConnected || !ngoApproved) return [];
             try {
-                return await listCampaignsByNGO(address);
+                return await listCampaignsByNGO(address, { bypassVisibilityAllowlist: true, includeAllStates: true });
             } catch {
                 return [];
             }
@@ -151,6 +152,12 @@ const UserProfile = () => {
         refetchOnMount: true,
         staleTime: 0,
     });
+
+    const sortedCreatedCampaigns = [...createdCampaigns].sort((a: any, b: any) => {
+        const aid = Number(a?.onchainId ?? a?.id ?? 0)
+        const bid = Number(b?.onchainId ?? b?.id ?? 0)
+        return bid - aid
+    })
 
     const statistics = {
         causesSupported: new Set(myNfts.map(n => n.campaignId.toString())).size,
@@ -768,14 +775,18 @@ const UserProfile = () => {
                         </div>
                     )}
 
-                    {activeCategory === 'Campaigns' && ngoApproved && (
+                        {activeCategory === 'Campaigns' && ngoApproved && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-40">
-                            {createdCampaigns.length > 0 ? (
-                                createdCampaigns.map((campaign) => (
+                            {sortedCreatedCampaigns.length > 0 ? (
+                                sortedCreatedCampaigns.map((campaign) => (
                                     <div
                                         key={campaign.onchainId || campaign.id}
                                         className="bg-white rounded-2xl overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer"
-                                        onClick={() => navigate(`/campaign/${campaign.onchainId || campaign.id}`)}
+                                        onClick={() =>
+                                            navigate(`/campaign/${campaign.onchainId || campaign.id}`, {
+                                                state: { fromPath: currentLocation.pathname },
+                                            })
+                                        }
                                     >
                                         <div className="relative h-48 bg-gray-200">
                                             {campaign.image && (
@@ -805,9 +816,20 @@ const UserProfile = () => {
                                                 <span className="text-xs text-gray-500">
                                                     Created: {new Date(campaign.createdAt || Date.now()).toLocaleDateString()}
                                                 </span>
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${campaign.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                                                    }`}>
-                                                    {campaign.status || 'Active'}
+                                                <span
+                                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                        campaign.status === 'active'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : campaign.status === 'pending'
+                                                              ? 'bg-yellow-100 text-yellow-700'
+                                                              : 'bg-red-100 text-red-700'
+                                                    }`}
+                                                >
+                                                    {campaign.status === 'active'
+                                                        ? 'Active'
+                                                        : campaign.status === 'pending'
+                                                          ? 'Pending'
+                                                          : 'Flagged'}
                                                 </span>
                                             </div>
                                         </div>

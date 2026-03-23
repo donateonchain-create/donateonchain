@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import Header from '../component/Header'
 import Footer from '../component/Footer'
@@ -35,6 +35,7 @@ import {
     getRemainingToTargetHBAR,
     normalizeCampaignAmounts,
     normalizeLikelyWeiNumber,
+    targetAmountToHbar,
     weiToHbar,
 } from '../utils/hbar'
 
@@ -103,6 +104,7 @@ const formatCampaignDeadline = (raw: string | undefined | null): string | null =
 const CampaignDetails = () => {
     const { id } = useParams<{ id: string }>()
     const navigate = useNavigate()
+    const location = useLocation()
     const { address, isConnected } = useAccount()
     const [donationAmount, setDonationAmount] = useState<string>('')
     const [isDonating, setIsDonating] = useState(false)
@@ -118,15 +120,8 @@ const CampaignDetails = () => {
         queryKey: ['campaign', id],
         queryFn: async () => {
             if (!id) return null;
-            const cacheKey = `campaign_detail_v3_${id}`
+            const cacheKey = `campaign_detail_v5_${id}`
             const numericId = BigInt(id || '0')
-
-            if (!isCampaignIdInPublicAllowlist(numericId)) {
-                try {
-                    localStorage.removeItem(cacheKey)
-                } catch {}
-                return null
-            }
 
             const gate = await onchainGetCampaign(numericId).catch(() => null)
             if (gate != null && gate.state === CampaignState.Closed) {
@@ -200,7 +195,7 @@ const CampaignDetails = () => {
                     metaGoalNum !== undefined && !Number.isNaN(metaGoalNum) ? metaGoalNum : undefined
                 const targetFromChain =
                     chainCampaign && chainCampaign.goalHBAR !== undefined && chainCampaign.goalHBAR > 0n
-                        ? weiToHbar(chainCampaign.goalHBAR)
+                        ? targetAmountToHbar(chainCampaign.goalHBAR)
                         : 0
                 const campaignObj: any = {
                     id: Number(numericId),
@@ -245,7 +240,7 @@ const CampaignDetails = () => {
     const { data: allCampaigns = [], isLoading: isRelatedLoading } = useQuery({
         queryKey: ['related_campaigns', id],
         queryFn: async () => {
-            const cacheKey = `campaigns_related_ex_${id}`
+                const cacheKey = `campaigns_related_ex_v3_${id}`
             const cached = getCache(cacheKey)
             if (cached) return cached
 
@@ -315,7 +310,14 @@ const CampaignDetails = () => {
                     <div className="text-center">
                         <h1 className="text-2xl font-semibold mb-4">Campaign not found</h1>
                         <button 
-                            onClick={() => navigate('/campaign')}
+                            onClick={() => {
+                                const fromPath = (location.state as any)?.fromPath as string | undefined
+                                if (fromPath) {
+                                    navigate(fromPath)
+                                } else {
+                                    navigate(-1)
+                                }
+                            }}
                             className="bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition-colors"
                         >
                             Go Back
@@ -403,16 +405,30 @@ const CampaignDetails = () => {
                 if (import.meta.env.DEV) console.warn('NFT mint failed (non-critical):', e)
             })
             // Bust localStorage cache so query re-fetches fresh on-chain data
-            localStorage.removeItem(`campaign_detail_v3_${id}`)
+            localStorage.removeItem(`campaign_detail_v5_${id}`)
             localStorage.removeItem(`campaign_${id}`)
-            let updatedAmountRaised = 0
-            try {
-                updatedAmountRaised = await getCampaignRaisedHBAR(campaignIdForChain)
-            } catch {
-                const donations = await onchainGetDonationsByCampaign(campaignIdForChain)
-                updatedAmountRaised = donations.totalRaisedHBAR
+            const previousAmountRaised = Number(campaign.amountRaised ?? 0) || 0
+            let updatedAmountRaised = previousAmountRaised
+
+            const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+            for (let attempt = 0; attempt < 6; attempt++) {
+                try {
+                    updatedAmountRaised = await getCampaignRaisedHBAR(campaignIdForChain)
+                } catch {
+                    try {
+                        const donations = await onchainGetDonationsByCampaign(campaignIdForChain)
+                        updatedAmountRaised = donations.totalRaisedHBAR
+                    } catch {
+                        updatedAmountRaised = previousAmountRaised
+                    }
+                }
+
+                if (updatedAmountRaised > previousAmountRaised) break
+                await delay(1000)
             }
-            const goal = campaign.target || 0
+
+            const goal = Number(campaign.target ?? 0) || 0
             const updatedPercentage = goal > 0 ? (updatedAmountRaised / goal) * 100 : 0
             const prevCount =
                 typeof campaign.donationCount === 'number' ? campaign.donationCount : donationActivity.length
@@ -424,8 +440,21 @@ const CampaignDetails = () => {
             })
             queryClient.setQueryData(['campaign', id], updated)
             if (id) {
-                queryClient.invalidateQueries({ queryKey: ['campaign_donations', id] })
+                const donationQueryKey = ['campaign_donations', id, String(campaignIdForChain)]
+                try {
+                    const raw = await onchainGetDonationsByCampaign(campaignIdForChain)
+                    const events = donationEventsFromChain(id, raw).slice(0, 50)
+                    queryClient.setQueryData(donationQueryKey, events)
+                } catch {
+                    // Keep existing list; invalidation below will try again.
+                }
+                queryClient.invalidateQueries({ queryKey: donationQueryKey })
                 queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+                queryClient.invalidateQueries({ queryKey: ['globalCampaigns'] })
+                queryClient.invalidateQueries({ queryKey: ['campaigns_all'] })
+                try {
+                    localStorage.removeItem('home_popular_campaigns_v4_hbar8_fixTarget')
+                } catch {}
             }
             setTimeout(() => {
                 setDonationSuccess(false)
