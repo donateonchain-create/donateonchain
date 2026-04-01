@@ -4,7 +4,7 @@ import { getStorageJson } from './safeStorage'
 import { getIPFSURL, unpinCID, uploadFileToIPFS } from './ipfs'
 import { getAuthHeaders } from '../api/auth'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002'
+const API_URL = import.meta.env.VITE_API_URL as string
 const isDev = import.meta.env.DEV
 
 async function apiJsonRead(path: string, init?: RequestInit) {
@@ -500,7 +500,7 @@ export const saveNgoApplication = async (ngoData: any, signature?: string, times
       headers['x-wallet-signature'] = signature;
       headers['x-wallet-timestamp'] = timestamp;
     }
-    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications`, {
+    const fromApi = await fetch(`${API_URL}/api/ngo/applications`, {
       method: 'POST',
       headers,
       body: JSON.stringify(ngoData)
@@ -515,7 +515,7 @@ export const saveNgoApplication = async (ngoData: any, signature?: string, times
 export const getNgoApplications = async () => {
   try {
     const authHeaders = getAuthHeaders();
-    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/admin/ngo-applications`, {
+    const fromApi = await fetch(`${API_URL}/api/admin/ngo-applications`, {
       headers: authHeaders
     }).then(r => r.json());
     return fromApi.items || [];
@@ -534,7 +534,7 @@ export const getNgoApplicationByWallet = async (walletAddress: string, signature
     } else {
       Object.assign(headers, getAuthHeaders())
     }
-    const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/ngo/applications/${walletAddress}`, {
+    const res = await fetch(`${API_URL}/api/ngo/applications/${walletAddress}`, {
       headers,
     })
     const json = await res.json().catch(() => ({}))
@@ -654,7 +654,7 @@ export const updateNgoApplicationStatus = async (
   _approvalTransactionHash?: string
 ) => {
   try {
-    const fromApi = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/admin/ngo-applications/${walletAddress}`, {
+    const fromApi = await fetch(`${API_URL}/api/admin/ngo-applications/${walletAddress}`, {
       method: 'PATCH',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, rejectionReason: reason })

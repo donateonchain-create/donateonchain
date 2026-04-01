@@ -3,16 +3,32 @@ import type { ApiError } from '../types/api'
 const DEFAULT_TIMEOUT_MS = 15000
 
 export function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || 'http://localhost:3002'
+  const url = import.meta.env.VITE_API_URL
+  if (!url) {
+    throw new Error(
+      'Missing required environment variable: VITE_API_URL. ' +
+      'Set it in your .env file for local development or in the Cloudflare Pages ' +
+      'dashboard (Settings → Environment variables) for production.'
+    )
+  }
+  return url
 }
 
 export function getRelayerUrl(): string {
-  return import.meta.env.VITE_RELAYER_API_URL || 'http://localhost:3001'
+  const url = import.meta.env.VITE_RELAYER_API_URL
+  if (!url) {
+    throw new Error(
+      'Missing required environment variable: VITE_RELAYER_API_URL. ' +
+      'Set it in your .env file for local development or in the Cloudflare Pages ' +
+      'dashboard (Settings → Environment variables) for production.'
+    )
+  }
+  return url
 }
 
 async function parseErrorResponse(res: Response): Promise<ApiError> {
   const text = await res.text().catch(() => '')
-  let message = text || `Request failed: ${res.status}`
+  let message = text || `HTTP ${res.status}: ${res.statusText || 'An unexpected error occurred'}`
   let code: string | undefined
   try {
     const json = JSON.parse(text)
@@ -20,9 +36,11 @@ async function parseErrorResponse(res: Response): Promise<ApiError> {
       if (typeof json.error === 'string') message = json.error
       else if (json.error?.message) message = json.error.message
       if (json.error?.code) code = json.error.code
+    } else if (json?.message) {
+      message = json.message
     }
   } catch {
-    // keep message as text
+    // Response body is not JSON; use raw text as the message
   }
   return { message, status: res.status, code }
 }
@@ -69,7 +87,11 @@ export async function request<T>(
   } catch (e) {
     clearTimeout(timeoutId)
     if ((e as Error).name === 'AbortError') {
-      const err: ApiError = { message: 'Request timed out', status: 408 }
+      const err: ApiError = {
+        message: `Request timed out after ${DEFAULT_TIMEOUT_MS / 1000}s. The server did not respond in time.`,
+        status: 408,
+        code: 'REQUEST_TIMEOUT',
+      }
       throw Object.assign(new Error(err.message), err) as Error & ApiError
     }
     throw e
