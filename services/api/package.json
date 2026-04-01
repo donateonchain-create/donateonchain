@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.81.0",
-    "@prisma/client": "^6.1.0",
+    "@prisma/client": "^7.6.0",
     "cors": "^2.8.5",
     "donate-onchain": "file:../..",
     "dotenv": "^17.2.3",
@@ -28,7 +28,7 @@
     "multer": "^1.4.5-lts.2",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
-    "prisma": "^6.1.0",
+    "prisma": "^7.6.0",
     "viem": "^2.12.4",
     "zod": "^3.24.1"
   }
