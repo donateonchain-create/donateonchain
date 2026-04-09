@@ -14,8 +14,8 @@
     "relayer:dev": "npm --prefix ../../services/relayer run dev"
   },
   "dependencies": {
-    "@hashgraph/hedera-wallet-connect": "^2.0.3",
-    "@hashgraph/sdk": "^2.75.0",
+    "@hashgraph/hedera-wallet-connect": "^2.1.2",
+    "@hashgraph/sdk": "^2.81.0",
     "@reown/appkit": "^1.8.11",
     "@reown/appkit-adapter-wagmi": "^1.8.11",
     "@supabase/supabase-js": "^2.76.1",
