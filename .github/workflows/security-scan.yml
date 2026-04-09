@@ -25,7 +25,7 @@ jobs:
   #   
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  #       uses: actions/checkout@v6
   #
   #     - name: Initialize CodeQL
   #       uses: github/codeql-action/init@v3
@@ -47,7 +47,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run npm audit (Frontend)
         working-directory: apps/web
@@ -63,7 +63,7 @@ jobs:
   #   
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  #       uses: actions/checkout@v6
   #       with:
   #         submodules: recursive
   #
